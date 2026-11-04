@@ -51,3 +51,4 @@
 #define HAS_AUDIO 1
 #define HAS_SD 1
 #define HAS_IMU 1  // QMI8658 en el bus I2C (IIC_SDA/IIC_SCL)
+#define HAS_BLE 1  // BLE 5 del S3: vinculo de pasos con el movil (F25/F26)

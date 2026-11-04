@@ -21,6 +21,11 @@
 #if HAS_IMU
 #include <ImuDrv.hpp>  // SensorQMI8658: pedometro del QMI8658C (F14)
 #endif
+#if HAS_BLE
+#include "net/step_link.h"   // contrato de pasos telefono->reloj (logica pura)
+#include "net/ble_steps.h"   // F25: GATT server
+#include "net/wifi_steps.h"  // F26: respaldo HTTP por Wi-Fi
+#endif
 #include <U8g2lib.h>  // fuentes CJK (japones); ver applyLangFont()
 #include <esp_sleep.h>
 #include <driver/gpio.h>
@@ -93,6 +98,14 @@ Pet &pet = party.pet;  // companero activo: el bucle y la UI siguen usando `pet.
 SensorQMI8658 imu;      // QMI8658C compartido en el bus I2C (F14)
 bool imuOk = false;     // false = sin chip o fallo de I2C: el juego sigue, sin pasos
 uint32_t imuSteps = 0;  // ultimo valor del contador del chip (para el delta)
+#endif
+
+#if HAS_BLE
+// puente del vinculo telefono->reloj (F25/F26): la validacion de bytes vive
+// en net/step_link.cpp (probada en host); aqui solo se aplica al juego. Los
+// pasos del telefono entran por la misma puerta que los del IMU.
+void linkApply(int32_t d) { pet.addSteps((uint32_t)d); }
+uint32_t linkTotal() { return pet.stepsLifetime(); }
 #endif
 
 // sprite animado de la SD para la especie actual (si existe el archivo)
@@ -312,6 +325,12 @@ void setup() {
   }
 #endif
 
+#if HAS_BLE
+  // el servicio GATT del contrato de pasos (F25) esta listo desde el arranque;
+  // el respaldo Wi-Fi (F26) no se enciende hasta el comando WIFI de la consola.
+  bleStepsStart("POK-TAMA", linkApply, linkTotal);
+#endif
+
   sdBegin();
   thumbs.load();
 
@@ -436,6 +455,10 @@ void loop() {
     if (s > imuSteps) pet.addSteps(s - imuSteps);
     imuSteps = s;  // si el chip lee menor (glitch I2C), solo realinea
   }
+#endif
+
+#if HAS_BLE
+  wifiStepsLoop();  // F26: atender el POST /steps si el respaldo esta encendido
 #endif
 
   // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
@@ -617,6 +640,23 @@ void handleSerial() {
   } else if (line.startsWith("STEPS ")) {  // inyectar pasos (pruebas y placas sin IMU)
     pet.addSteps(strtoul(line.c_str() + 6, nullptr, 10));
     Serial.println("DONE");
+#if HAS_BLE
+  } else if (line == "BLE") {  // estado del vinculo de pasos (F25/F26)
+    Serial.printf("ble=%d wifi=%d total=%u\n", bleStepsOn() ? 1 : 0,
+                  wifiStepsOn() ? 1 : 0, pet.stepsLifetime());
+    Serial.println("DONE");
+  } else if (line.startsWith("WIFI ")) {  // encender el respaldo Wi-Fi (F26)
+    int sp = line.indexOf(' ', 5);
+    if (sp < 0) {
+      Serial.println("uso: WIFI <ssid> <pass>");
+    } else {
+      String ssid = line.substring(5, sp), pass = line.substring(sp + 1);
+      wifiStepsStart(ssid.c_str(), pass.c_str(), linkApply, linkTotal);
+      Serial.printf("wifi pasos ON: red %s, POST /steps delta=N contra la IP "
+                    "que imprima el monitor serie\n", ssid.c_str());
+    }
+    Serial.println("DONE");
+#endif
   } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);

@@ -10,6 +10,15 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **Phone step link (F25/F26).** A BLE GATT service carries the step
+  contract: `STEPS_DELTA` (write, int32 LE delta) feeds the same training
+  path as the IMU, `STEPS_TOTAL` (read) exposes lifetime steps, and
+  `STEP_EVT` (notify) acks each write. Boards without an IMU (Guition) get
+  real steps from the phone this way. Fallback for phones without a BLE
+  app: a console-switchable Wi-Fi mode (`WIFI <ssid> <pass>`) serves
+  `POST /steps delta=N` over HTTP with the same validation. The byte-level
+  contract is pure logic (`net/step_link.cpp`) and host-tested.
+
 - **Step counter (F14–F16).** The Waveshare board's QMI8658C counts steps by
   itself (on-device pedometer, polled every few seconds; `HAS_IMU` board
   capability — the Guition panel has no IMU and takes steps via the serial

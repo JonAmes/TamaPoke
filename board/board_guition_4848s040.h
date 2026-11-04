@@ -68,3 +68,4 @@
 #define HAS_AUDIO 0
 #define HAS_SD 0
 #define HAS_IMU 0  // el panel Guition no lleva IMU: los pasos llegan por consola/BLE
+#define HAS_BLE 1  // BLE 5 del S3: unica via de pasos reales en esta placa (F25)
