@@ -10,6 +10,20 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **Step counter (F14–F16).** The Waveshare board's QMI8658C counts steps by
+  itself (on-device pedometer, polled every few seconds; `HAS_IMU` board
+  capability — the Guition panel has no IMU and takes steps via the serial
+  console only, `STEPS` to read / `STEPS n` to inject). The active companion
+  trains +1 SPEED per 200 steps (daily cap 10) and burns weight walking; the
+  device tracks today/lifetime counters that survive reboots. Daily goal of
+  8,000 steps grants joy + bond and the new `8K` medal (all 8 languages).
+  The home screen shows a live `PASOS n/8000` chip (gold when the goal is
+  done) and the progress card repeats it.
+
+- **Party avatar row.** The home screen now shows the 4 party slots up top:
+  gold ring = active, plain ring = reserve, egg oval = unhatched, dot = empty.
+  Tap a slot to switch the active companion (same as serial `FOCUS n`).
+
 - **Party model (F34).** The device now keeps up to 4 companions
   (`PARTY_MAX`). One is *active* — full care loop, XP, steps, minigames — the
   others wait in reserve: they age at the same rate but decay 4x slower with a

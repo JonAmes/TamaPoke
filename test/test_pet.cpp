@@ -646,6 +646,64 @@ TEST(streak, celebra_los_hitos) {
   CHECK_EQ(p.dev.lastMilestone, (uint16_t)3);
 }
 
+// ---------------------------------------------------------------- pasos
+TEST(steps, la_marcha_entrena_vel_con_tope_diario) {
+  Pet p;
+  makePet(p, 4);
+  p.setClock(100u * 86400);
+  p.addSteps(1000);  // 1000 pasos = 5 puntos de VEL
+  CHECK_EQ(p.stepsDayCount(), (uint32_t)1000);
+  CHECK_EQ(p.trSpe, (uint8_t)5);
+  p.addSteps(100000);  // con tope diario WALK_PT_DAY_CAP
+  CHECK_EQ(p.trSpe, (uint8_t)WALK_PT_DAY_CAP);
+  CHECK_EQ(p.stepsDayCount(), (uint32_t)101000);  // el contador no se capa
+  CHECK_EQ(p.stepsLifetime(), (uint32_t)101000);
+}
+
+TEST(steps, el_bonus_diario_solo_se_celebra_una_vez) {
+  Pet p;
+  makePet(p, 4);
+  p.setClock(100u * 86400);
+  p.addSteps(STEP_GOAL - 1);
+  CHECK_MSG(!p.goalDoneToday(), "aun no llega al objetivo");
+  p.addSteps(1);
+  CHECK_MSG(p.goalDoneToday(), "objetivo celebrado");
+  CHECK(p.hasMedal(MED_WALK));
+  uint16_t tm = p.dev.totalMedals;
+  p.addSteps(4 * STEP_GOAL);  // otro dia: contador reset, medalla unica
+  p.setClock(101u * 86400);
+  p.addSteps(STEP_GOAL);
+  CHECK_EQ(p.stepsDayCount(), (uint32_t)STEP_GOAL);
+  CHECK_MSG(p.goalDoneToday(), "el bonus vuelve cada dia");
+  CHECK_EQ(p.dev.totalMedals, tm);  // la medalla no se repite
+}
+
+TEST(steps, el_huevo_no_entrena_pero_los_pasos_suman) {
+  mockNvsReset();
+  mockSetMillis(0);
+  Pet p;
+  p.begin();
+  if (p.awaitingStarter()) p.chooseStarter(4);
+  CHECK_MSG(p.isEgg(), "todavia es huevo");
+  p.setClock(100u * 86400);
+  p.addSteps(STEP_GOAL);
+  CHECK_EQ(p.stepsDayCount(), (uint32_t)STEP_GOAL);
+  CHECK_EQ(p.trSpe, (uint8_t)0);  // el huevo no entrena
+}
+
+TEST(steps, sobreviven_al_reinicio) {
+  Pet p;
+  makePet(p, 4);
+  p.setClock(100u * 86400);
+  p.addSteps(3000);
+  p.flushSave();
+  Pet q;
+  q.begin();  // mismo NVS: reboot
+  CHECK_EQ(q.stepsDayCount(), (uint32_t)3000);
+  CHECK_EQ(q.stepsLifetime(), (uint32_t)3000);
+  CHECK_EQ(q.trSpe, (uint8_t)WALK_PT_DAY_CAP);  // el entreno (capado) también
+}
+
 TEST(bonus, racha_y_vinculo_mejoran_el_huevo) {
   Pet p;
   makePet(p, 4);

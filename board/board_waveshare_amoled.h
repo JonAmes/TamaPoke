@@ -50,3 +50,4 @@
 #define HAS_RTC 1
 #define HAS_AUDIO 1
 #define HAS_SD 1
+#define HAS_IMU 1  // QMI8658 en el bus I2C (IIC_SDA/IIC_SCL)

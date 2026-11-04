@@ -18,6 +18,9 @@
 #else
 #include "TouchDrvCSTXXX.hpp"
 #endif
+#if HAS_IMU
+#include <ImuDrv.hpp>  // SensorQMI8658: pedometro del QMI8658C (F14)
+#endif
 #include <U8g2lib.h>  // fuentes CJK (japones); ver applyLangFont()
 #include <esp_sleep.h>
 #include <driver/gpio.h>
@@ -85,6 +88,12 @@ TouchDrvCST92xx touch;
 bool gCjkFont = false;
 Party party;
 Pet &pet = party.pet;  // companero activo: el bucle y la UI siguen usando `pet.`
+
+#if HAS_IMU
+SensorQMI8658 imu;      // QMI8658C compartido en el bus I2C (F14)
+bool imuOk = false;     // false = sin chip o fallo de I2C: el juego sigue, sin pasos
+uint32_t imuSteps = 0;  // ultimo valor del contador del chip (para el delta)
+#endif
 
 // sprite animado de la SD para la especie actual (si existe el archivo)
 SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
@@ -170,6 +179,11 @@ Btn buttons[4] = {
 };
 #define BTN_HALF 26  // boton de 52x52
 #define BTN_HIT 36   // radio tactil (un poco mas generoso)
+// fila de avatares del party (F34): 4 pips en el cielo, centro del pip i-esimo
+#define AV_Y 116
+#define AV_GAP 36
+#define AV_ROW_X (CX - (PARTY_MAX - 1) * AV_GAP / 2)
+#define AV_HIT 17  // radio tactil del pip
 
 // grietas del huevo (pixeles 'k' sobre el sprite)
 static const uint8_t CRACK1[][2] = { {15,8},{16,9},{15,10} };
@@ -273,6 +287,31 @@ void setup() {
 #endif
 
   party.begin();
+
+#if HAS_IMU
+  // QMI8658C en el I2C compartido: el chip cuenta pasos el solo (F14). La pata
+  // AD0 elige la direccion (0x6A/0x6B) y en esta placa no esta documentada:
+  // se prueban ambas. ACC+GYR encendidos, que es el camino del pedometro del
+  // fabricante; el INT no va al ESP32, asi que se sondea en loop(). Sin INT
+  // habilitado enablePedometer usa IntPin::DISABLE (por defecto).
+  imuOk = imu.begin(Wire, QMI8658_H_SLAVE_ADDRESS, IIC_SDA, IIC_SCL) ||
+          imu.begin(Wire, QMI8658_L_SLAVE_ADDRESS, IIC_SDA, IIC_SCL);
+  if (imuOk) {
+    imu.configAccel(AccelFullScaleRange::FS_4G, 112.0f);
+    imu.configGyro(GyroFullScaleRange::FS_1000_DPS, 112.0f);
+    imu.enableAccel();
+    imu.enableGyro();
+    // perfil "debug" del ejemplo del vendor: mas facil de disparar que el del
+    // datasheet, que rechaza vibracion no-paso. Ajustar tras probarlo en la
+    // placa (bolsillo de abrigo, no muneca).
+    imuOk = imu.configPedometer(50, 80, 60, 400, 8, 1, 0, 1) && imu.enablePedometer();
+    imu.resetStepCount();
+    Serial.printf("QMI8658 pedometro: %s\n", imuOk ? "ON" : "FAIL");
+  } else {
+    Serial.println("QMI8658 no detectado (pasos solo por consola/BLE)");
+  }
+#endif
+
   sdBegin();
   thumbs.load();
 
@@ -384,6 +423,20 @@ void loop() {
     uint32_t e = rtcEpoch();
     if (e) pet.dev.lastSeenEpoch = e;
   }
+
+  // F14: el QMI8658 cuenta pasos el solo; se sondea y se entrega el delta al
+  // juego. Dos lecturas I2C cada 4 s no pesan ni con la pantalla atenuada.
+  // Tras un reinicio el contador del chip arranca de 0 (resetStepCount en
+  // setup): los pasos previos del dia ya entraron por addSteps y persisten.
+#if HAS_IMU
+  static uint32_t lastImu = 0;
+  if (imuOk && now - lastImu > 4000) {
+    lastImu = now;
+    uint32_t s = imu.getStepCount();
+    if (s > imuSteps) pet.addSteps(s - imuSteps);
+    imuSteps = s;  // si el chip lee menor (glitch I2C), solo realinea
+  }
+#endif
 
   // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
   static uint32_t lastHealth = 0;
@@ -553,6 +606,17 @@ void handleSerial() {
   } else if (line.startsWith("FOCUS ")) {  // cambiar el foco del party
     if (party.focus(line.substring(6).toInt())) Serial.println("DONE");
     else Serial.println("NO");  // slot vacio, fuera de rango o ya activo
+  } else if (line == "STEPS") {  // contador de pasos (F14)
+    Serial.printf("hoy=%u total=%u objetivo=%d", pet.stepsDayCount(),
+                  pet.stepsLifetime(), pet.goalDoneToday() ? 1 : 0);
+#if HAS_IMU
+    Serial.printf(" chip=%u imu=%d", imuSteps, imuOk ? 1 : 0);
+#endif
+    Serial.println();
+    Serial.println("DONE");
+  } else if (line.startsWith("STEPS ")) {  // inyectar pasos (pruebas y placas sin IMU)
+    pet.addSteps(strtoul(line.c_str() + 6, nullptr, 10));
+    Serial.println("DONE");
   } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);
@@ -815,6 +879,16 @@ void onTap(int16_t x, int16_t y) {
     }
     feedMenuUntil = 0;
     return;
+  }
+  // fila del party (F34): tocar un pip cambia el foco al companero de ese slot
+  for (int i = 0; i < PARTY_MAX; i++) {
+    int dx = x - (AV_ROW_X + i * AV_GAP), dy = y - AV_Y;
+    if (dx * dx + dy * dy > AV_HIT * AV_HIT) continue;
+    if (i != party.activeSlot() && party.slotUsed(i) && party.focus(i)) {
+      Serial.printf("FOCUS %d\n", i);
+      sfxPlay(SFX_TAP);
+    }
+    return;  // el pip se traga el toque aunque el slot este vacio
   }
   if (pet.isEgg()) {
     pet.eggTap();
@@ -1259,6 +1333,8 @@ bool render() {
     setCur(320, 130);
     printT("Zz");
   }
+  drawPartyPips();  // fila F34: bajo los pips solo queda el chip de pasos
+  drawStepsChip();  // despues de los Zz para que la huella no los tape nunca
 
   // selector de comida
   if (feedMenuUntil) {
@@ -1791,6 +1867,54 @@ void drawStreakBadge() {
   printT(s);
 }
 
+// fila del party (F34): cuatro pips en el cielo, uno por slot. Anillo dorado
+// = en foco; anillo normal = reserva; punto = slot vacio. Huevo = ovalo.
+// Tocar un pip cambia el foco (ver homeTap). Con la eleccion de inicial la
+// pantalla entera es otra escena y esto no se dibuja.
+#ifndef GAL_CELL
+#define GAL_CELL 80  // celda de miniatura; tambien la usan pips y galeria
+#endif
+void drawPartyPips() {
+  for (int i = 0; i < PARTY_MAX; i++) {
+    int px = AV_ROW_X + i * AV_GAP, py = AV_Y;
+    bool act = party.activeSlot() == i;
+    uint16_t ring = act ? UI_BAR_WARN : inkColor();
+    gfx->drawRoundRect(px - 13, py - 13, 26, 26, 8, ring);
+    if (!party.slotUsed(i)) {
+      gfx->fillRect(px - 1, py - 1, 3, 3, ring);  // vacio: puntito
+      continue;
+    }
+    const PetRecord &r = party.slots[i];
+    if (r.speciesId < 0) {  // huevo: ovalo simple
+      gfx->fillRect(px - 2, py - 5, 4, 3, ring);
+      gfx->fillRect(px - 3, py - 2, 6, 6, ring);
+      continue;
+    }
+    const uint8_t *th = thumbs.get(r.speciesId);
+    if (th) drawThumb(th, px - GAL_CELL / 2, py - GAL_CELL / 2, 1, false);
+    else gfx->fillRect(px - 3, py - 3, 6, 6, ring);  // sin SD: token liso
+  }
+}
+
+// chip en vivo de los pasos del dia (F14): es contador de dispositivo, se ve
+// tambien con el huevo. Colgado del cielo a la altura de los "Zz", alineado a
+// la derecha para no pisarlos; a y=130 la cuerda de la pantalla redonda aun es
+// ancha (la frase mas larga, el aleman, cabe medida con textW)
+void drawStepsChip() {
+  char s[32];  // 32: "ステップ 4294967295/8000" pide 25 en el peor caso (test_tools)
+  snprintf(s, sizeof(s), T(S_STEPS_FMT), pet.stepsDayCount(), (uint32_t)STEP_GOAL);
+  uint16_t col = pet.goalDoneToday() ? UI_BAR_WARN : inkColor();  // dorado = objetivo cumplido
+  setSize(2);
+  int tx = 315 - textW(s, 2);
+  // huella minima: planta + dos dedos, legible a tamano 2
+  gfx->fillRect(tx - 14, 136, 5, 8, col);
+  gfx->fillRect(tx - 15, 131, 2, 2, col);
+  gfx->fillRect(tx - 10, 131, 2, 2, col);
+  gfx->setTextColor(col);
+  setCur(tx, 130);
+  printT(s);
+}
+
 // banner temporal: medalla nueva o hito de racha
 void drawCelebration() {
   const char *l1 = nullptr, *l2 = nullptr;
@@ -1998,6 +2122,14 @@ void renderCardProgress() {
   gfx->setTextColor(pet.careMistakes > 0 ? UI_BAR_BAD : UI_INK);
   setCur(centerX(ms, 2), 312);
   printT(ms);
+
+  // pasos del dia (F14): dora el numero cuando el objetivo ya esta celebrado
+  char st[32];  // mismo peor caso JA que el chip de casa
+  snprintf(st, sizeof(st), T(S_STEPS_FMT), pet.stepsDayCount(), (uint32_t)STEP_GOAL);
+  gfx->setTextColor(pet.goalDoneToday() ? UI_BAR_WARN : UI_INK);  // dorado = objetivo cumplido
+  setSize(2);
+  setCur(centerX(st, 2), 342);
+  printT(st);
 }
 
 void renderCard() {

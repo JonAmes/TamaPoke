@@ -67,3 +67,4 @@
 #define HAS_RTC 0
 #define HAS_AUDIO 0
 #define HAS_SD 0
+#define HAS_IMU 0  // el panel Guition no lleva IMU: los pasos llegan por consola/BLE

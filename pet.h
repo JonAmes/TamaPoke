@@ -21,6 +21,13 @@
 // (decae lento y se detiene aqui; el ciclo de cuidados completo solo aplica
 // al companiero activo)
 #define RESERVE_FLOOR 40
+// pasos reales -> juego (F14/F16): la marcha entrena la VEL del companero
+// ACTIVO solo. cada STEPS_PER_PT pasos = 1 punto de entrenamiento con tope
+// diario WALK_PT_DAY_CAP (sin pasos el juego no avisa: los pasos regalan).
+// STEP_GOAL pasos en el dia celebran bonus (F16; 8000 por defecto, plan.md)
+#define STEP_GOAL 8000
+#define STEPS_PER_PT 200
+#define WALK_PT_DAY_CAP 10
 
 // milisegundos que faltan hasta `deadline` (0 si ya paso, o si deadline==0:
 // "temporizador inactivo"). Todos los temporizadores del juego (dialogos,
@@ -45,9 +52,9 @@ enum PetMood : uint8_t { MOOD_HAPPY, MOOD_SAD, MOOD_EATING, MOOD_SLEEPING };
 enum : uint16_t {
   MED_LV10 = 1 << 0, MED_LV25 = 1 << 1, MED_LV50 = 1 << 2,
   MED_BERRY = 1 << 3, MED_STREAK7 = 1 << 4, MED_BOND = 1 << 5,
-  MED_FINAL = 1 << 6, MED_FIT = 1 << 7,
+  MED_FINAL = 1 << 6, MED_FIT = 1 << 7, MED_WALK = 1 << 8,
 };
-#define MED_COUNT 8
+#define MED_COUNT 9
 
 // Estado del DISPOSITIVO (no del individuo): lo que sobrevive a cualquier
 // crianza y es comun a todos los companeros. La pokedex es la union sobre
@@ -65,6 +72,13 @@ struct DevState {
   uint16_t gameHi = 0;         // record del minijuego (del jugador)
   uint16_t strHi = 0;          // record de golpes al saco
   uint32_t lastSeenEpoch = 0;  // ultima hora RTC vista (progresion offline)
+  // pasos del dia (F14/F16): contador del dispositivo; el entrenamiento que
+  // producen lo recibe quien este en foco cuando llegan (activo only, F34)
+  uint32_t stepsToday = 0, stepsTotal = 0;
+  uint32_t stepsDay = 0;         // serial de dia del contador actual
+  uint32_t walkStepsSpent = 0;   // pasos ya convertidos en puntos hoy
+  uint8_t walkPtsToday = 0;      // puntos de VEL regalados por marcha hoy
+  uint8_t goalDone = 0;          // STEP_GOAL ya celebrado hoy
 };
 
 // Estado COMPLETO de un companero. Es el snapshot persistido por slot y,
@@ -134,6 +148,13 @@ public:
   }
   void playResult(uint8_t score);  // recompensa del minijuego (entrena VEL)
   uint8_t trainStrength(uint16_t hits);  // saco de entrenamiento (entrena FUE)
+  // pasos reales (F14/F16): suman al contador del dispositivo y la marcha
+  // entrena la VEL del companiero en foco, 1 pt cada STEPS_PER_PT pasos con
+  // tope diario; al llegar a STEP_GOAL se celebra el bonus del dia
+  void addSteps(uint32_t delta);
+  uint32_t stepsDayCount() const { return dev.stepsToday; }
+  uint32_t stepsLifetime() const { return dev.stepsTotal; }
+  bool goalDoneToday() const { return dev.goalDone != 0; }
 
   // stats de combate: base real de gen 1 x genes + nivel + entrenamiento
   uint16_t atkStat() const;

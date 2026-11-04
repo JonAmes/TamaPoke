@@ -305,6 +305,7 @@ void Pet::checkMedals() {
   if (bond >= 100) medals |= MED_BOND;
   if (DEX_TBL[speciesId].evolvesTo == 0) medals |= MED_FINAL;
   if (weight == 0 && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
+  if (dev.goalDone) medals |= MED_WALK;
   uint16_t gained = medals & ~before;
   if (gained) {
     for (uint16_t m = gained; m; m &= (m - 1)) dev.totalMedals++;
@@ -483,6 +484,44 @@ void Pet::playResult(uint8_t score) {
   save();
 }
 
+void Pet::addSteps(uint32_t delta) {
+  if (!delta) return;
+  uint32_t d = today();
+  if (d != dev.stepsDay) {  // cambio de dia: contador y bonus arrancan de 0
+    dev.stepsDay = d;
+    dev.stepsToday = 0;
+    dev.walkStepsSpent = 0;
+    dev.walkPtsToday = 0;
+    dev.goalDone = 0;
+  }
+  dev.stepsToday += delta;
+  dev.stepsTotal += delta;
+  // la marcha entrena la VEL de quien este en foco (reservas: nada, F34),
+  // 1 punto cada STEPS_PER_PT pasos con tope diario; el huevo no entrena
+  if (!isEgg() && ceremony == CER_NONE) {
+    uint8_t room = WALK_PT_DAY_CAP - dev.walkPtsToday;
+    uint32_t free_ = dev.stepsToday - dev.walkStepsSpent;
+    uint32_t g = free_ / STEPS_PER_PT;
+    uint8_t gain = g > room ? room : (uint8_t)g;
+    if (gain) {
+      dev.walkStepsSpent += (uint32_t)gain * STEPS_PER_PT;
+      dev.walkPtsToday += gain;
+      uint8_t v = trSpe + gain;
+      trSpe = v > 100 ? 100 : v;
+      int burn = (int)weight - (int)gain * 2;  // andar tambien quema peso
+      weight = burn > 0 ? burn : 0;
+    }
+  }
+  if (!dev.goalDone && dev.stepsToday >= STEP_GOAL) {
+    dev.goalDone = 1;
+    joy = clamp100(joy + 10);
+    addBond(3);
+    heartUntil = millis() + HEART_MS;
+    checkMedals();  // MED_WALK con la celebracion y sonido de siempre
+  }
+  pendingSave = true;  // el flush periodico persiste; el chip guarda el dia
+}
+
 // saco de entrenamiento: los golpes entrenan la fuerza. Devuelve la subida.
 uint8_t Pet::trainStrength(uint16_t hits) {
   if (ceremony != CER_NONE || isEgg()) return 0;
@@ -652,6 +691,12 @@ void Pet::save() {
   prefs.putUShort("ghi", dev.gameHi);
   prefs.putUShort("shi", dev.strHi);
   if (dev.lastSeenEpoch) prefs.putUInt("seen", dev.lastSeenEpoch);
+  prefs.putUInt("stcnt", dev.stepsToday);
+  prefs.putUInt("sttot", dev.stepsTotal);
+  prefs.putUInt("stday", dev.stepsDay);
+  prefs.putUInt("stspnt", dev.walkStepsSpent);
+  prefs.putUChar("stpts", dev.walkPtsToday);
+  prefs.putUChar("stgoal", dev.goalDone);
   // registro del slot enfocado
   PetRecord r;
   toRecord(r);
@@ -670,6 +715,12 @@ void Pet::load() {
   dev.gameHi = prefs.getUShort("ghi", 0);
   dev.strHi = prefs.getUShort("shi", 0);
   dev.lastSeenEpoch = prefs.getUInt("seen", 0);
+  dev.stepsToday = prefs.getUInt("stcnt", 0);
+  dev.stepsTotal = prefs.getUInt("sttot", 0);
+  dev.stepsDay = prefs.getUInt("stday", 0);
+  dev.walkStepsSpent = prefs.getUInt("stspnt", 0);
+  dev.walkPtsToday = prefs.getUChar("stpts", 0);
+  dev.goalDone = prefs.getUChar("stgoal", 0);
   PetRecord r;
   rdRec(prefs, slot, r);
   if (r.geneAtk == 0) {  // mascota anterior a los genes: tirada unica ahora

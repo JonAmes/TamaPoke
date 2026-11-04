@@ -35,6 +35,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Evolucionar?", "Mantener forma", "Despedirse?", "Despedirse", "Quedaros juntos",
     "Elige tu inicial",
     "Sin sprites", "C\240rgalos en la SD",
+    "PASOS %u/%u",
   },
   // ---------------- EN ----------------
   {
@@ -64,6 +65,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Evolve?", "Keep form", "Say goodbye?", "Goodbye", "Stay together",
     "Choose your starter",
     "No sprites", "Load them onto the SD",
+    "STEPS %u/%u",
   },
   // ---------------- FR ----------------
   {
@@ -93,6 +95,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "\220voluer?", "Garder forme", "Dire adieu?", "Adieu", "Rester ensemble",
     "Choisis ton starter",
     "Pas de sprites", "Charge-les sur la SD",
+    "PAS %u/%u",
   },
   // ---------------- DE ----------------
   // El aleman si lleva dieresis: la fuente 5x7 del firmware es una tabla CP437
@@ -127,6 +130,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Entwickeln?", "Form behalten", "Abschied?", "Leb wohl", "Zusammen bleiben",
     "W\204hle deinen Starter",
     "Keine Sprites", "Auf die SD laden",
+    "SCHRITTE %u/%u",
   },
   // ---------------- IT ----------------
   {
@@ -156,6 +160,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Evolvere?", "Mantieni forma", "Salutare?", "Addio", "Restare insieme",
     "Scegli l'iniziale",
     "Senza sprite", "Caricali sulla SD",
+    "PASSI %u/%u",
   },
   // ---------------- PT ----------------
   {
@@ -185,6 +190,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Evoluir?", "Manter forma", "Despedir?", "Adeus", "Ficar juntos",
     "Escolhe o inicial",
     "Sem sprites", "Carrega-os no SD",
+    "PASSOS %u/%u",
   },
   // ---------------- JA ----------------
   {
@@ -237,6 +243,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "さいしょのポケモンをえらぶ",
 
     "スプライトなし", "SDにいれてください",
+    "ステップ %u/%u",
   },
   // ---------------- KO ----------------
   // Los especificadores van en el MISMO ORDEN que en la fila inglesa aunque
@@ -271,47 +278,56 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "진화할까요?", "형태 유지", "작별할까요?", "작별", "계속 함께",
     "스타터를 선택하세요",
     "스프라이트 없음", "SD 카드에 넣어주세요",
+    "걸음 %u/%u",
   },
 };
 
 // Nombres de medalla en sus tres longitudes [idioma][medalla].
 static const char *const MED_NAME[LANG_COUNT][MED_COUNT] = {
-  { "Nv.10", "Nv.25", "Nv.50", "BAYA", "RACHA 7", "VINCULO", "FORMA TOPE", "EN FORMA" },
-  { "Lv.10", "Lv.25", "Lv.50", "BERRY", "7 STREAK", "BOND", "TOP FORM", "IN SHAPE" },
-  { "Niv.10", "Niv.25", "Niv.50", "BAIE", "SERIE 7", "LIEN", "FORME MAX", "EN FORME" },
-  { "Lv.10", "Lv.25", "Lv.50", "BEERE", "7 SERIE", "BINDUNG", "ENDFORM", "FIT" },
-  { "Lv.10", "Lv.25", "Lv.50", "BACCA", "SERIE 7", "LEGAME", "FORMA MAX", "IN FORMA" },
-  { "Niv.10", "Niv.25", "Niv.50", "BAGA", "SEQ 7", "LACO", "FORMA MAX", "EM FORMA" },
-  { "Lv.10", "Lv.25", "Lv.50", "きのみ", "7にち", "なかよし", "さいしゅう", "げんき" },
-  { "Lv.10", "Lv.25", "Lv.50", "열매", "연속 7일", "유대", "최고 컨디션", "건강함" },
+  { "Nv.10", "Nv.25", "Nv.50", "BAYA", "RACHA 7", "VINCULO", "FORMA TOPE", "EN FORMA", "8K PASOS" },
+  { "Lv.10", "Lv.25", "Lv.50", "BERRY", "7 STREAK", "BOND", "TOP FORM", "IN SHAPE", "8K STEPS" },
+  { "Niv.10", "Niv.25", "Niv.50", "BAIE", "SERIE 7", "LIEN", "FORME MAX", "EN FORME", "8K PAS" },
+  { "Lv.10", "Lv.25", "Lv.50", "BEERE", "7 SERIE", "BINDUNG", "ENDFORM", "FIT", "8K SCHRITTE" },
+  { "Lv.10", "Lv.25", "Lv.50", "BACCA", "SERIE 7", "LEGAME", "FORMA MAX", "IN FORMA", "8K PASSI" },
+  { "Niv.10", "Niv.25", "Niv.50", "BAGA", "SEQ 7", "LACO", "FORMA MAX", "EM FORMA", "8K PASSOS" },
+  { "Lv.10", "Lv.25", "Lv.50", "きのみ", "7にち", "なかよし", "さいしゅう", "げんき", "8000ほ" },
+  { "Lv.10", "Lv.25", "Lv.50", "열매", "연속 7일", "유대", "최고 컨디션", "건강함", "8000걸음" },
 };
 static const char *const MED_LBL[LANG_COUNT][MED_COUNT] = {
-  { "Nv10", "Nv25", "Nv50", "BAYA", "7DIAS", "VINC", "TOPE", "SANO" },
-  { "Lv10", "Lv25", "Lv50", "BERRY", "7DAYS", "BOND", "TOP", "FIT" },
-  { "Niv10", "Niv25", "Niv50", "BAIE", "7JRS", "LIEN", "MAX", "FORME" },
-  { "Lv10", "Lv25", "Lv50", "BEERE", "7TAGE", "BND", "END", "FIT" },
-  { "Lv10", "Lv25", "Lv50", "BACCA", "7GG", "LEG", "MAX", "FIT" },
-  { "Niv10", "Niv25", "Niv50", "BAGA", "7DIAS", "LACO", "MAX", "FIT" },
-  { "Lv10", "Lv25", "Lv50", "きのみ", "7にち", "なかよし", "しんか", "げんき" },
-  { "Lv10", "Lv25", "Lv50", "열매", "7일", "유대", "최고", "건강" },
+  { "Nv10", "Nv25", "Nv50", "BAYA", "7DIAS", "VINC", "TOPE", "SANO", "PASOS" },
+  { "Lv10", "Lv25", "Lv50", "BERRY", "7DAYS", "BOND", "TOP", "FIT", "STEPS" },
+  { "Niv10", "Niv25", "Niv50", "BAIE", "7JRS", "LIEN", "MAX", "FORME", "PAS" },
+  { "Lv10", "Lv25", "Lv50", "BEERE", "7TAGE", "BND", "END", "FIT", "SCHR" },
+  { "Lv10", "Lv25", "Lv50", "BACCA", "7GG", "LEG", "MAX", "FIT", "PASSI" },
+  { "Niv10", "Niv25", "Niv50", "BAGA", "7DIAS", "LACO", "MAX", "FIT", "PASSOS" },
+  { "Lv10", "Lv25", "Lv50", "きのみ", "7にち", "なかよし", "しんか", "げんき", "8000" },
+  { "Lv10", "Lv25", "Lv50", "열매", "7일", "유대", "최고", "건강", "8000" },
 };
 static const char *const MED_DSC[LANG_COUNT][MED_COUNT] = {
   { "NIVEL 10", "NIVEL 25", "NIVEL 50", "BAYA HALLADA",
-    "RACHA 7 DIAS", "VINCULO MAX", "FORMA FINAL", "EN FORMA" },
+    "RACHA 7 DIAS", "VINCULO MAX", "FORMA FINAL", "EN FORMA",
+    "OBJETIVO 8K" },
   { "LEVEL 10", "LEVEL 25", "LEVEL 50", "BERRY FOUND",
-    "7 DAY STREAK", "MAX BOND", "FINAL FORM", "IN SHAPE" },
+    "7 DAY STREAK", "MAX BOND", "FINAL FORM", "IN SHAPE",
+    "8000 STEP GOAL" },
   { "NIVEAU 10", "NIVEAU 25", "NIVEAU 50", "BAIE TROUVEE",
-    "SERIE 7 JOURS", "LIEN MAX", "FORME FINALE", "EN FORME" },
+    "SERIE 7 JOURS", "LIEN MAX", "FORME FINALE", "EN FORME",
+    "OBJECTIF 8K PAS" },
   { "LEVEL 10", "LEVEL 25", "LEVEL 50", "BEERE GEFUNDEN",
-    "7 TAGE SERIE", "MAX BINDUNG", "ENDFORM", "FIT" },
+    "7 TAGE SERIE", "MAX BINDUNG", "ENDFORM", "FIT",
+    "8K SCHRITTE ZIEL" },
   { "LIVELLO 10", "LIVELLO 25", "LIVELLO 50", "BACCA TROVATA",
-    "SERIE 7 GIORNI", "LEGAME MAX", "FORMA FINALE", "IN FORMA" },
+    "SERIE 7 GIORNI", "LEGAME MAX", "FORMA FINALE", "IN FORMA",
+    "OBIETTIVO 8K" },
   { "NIVEL 10", "NIVEL 25", "NIVEL 50", "BAGA ACHADA",
-    "SEQ 7 DIAS", "LACO MAX", "FORMA FINAL", "EM FORMA" },
+    "SEQ 7 DIAS", "LACO MAX", "FORMA FINAL", "EM FORMA",
+    "META 8K PASSOS" },
   { "レベル 10", "レベル 25", "レベル 50", "きのみ はっけん",
-    "7にち れんぞく", "なかよし MAX", "さいしゅうしんか", "げんきいっぱい" },
+    "7にち れんぞく", "なかよし MAX", "さいしゅうしんか", "げんきいっぱい",
+    "8000ほ たっせい" },
   { "레벨 10", "레벨 25", "레벨 50", "열매 발견",
-    "연속 7일", "유대감 최대", "최종 진화", "건강함" },
+    "연속 7일", "유대감 최대", "최종 진화", "건강함",
+    "8000걸음 달성" },
 };
 
 const char *T(StrId id) { return STRINGS[gLang][id]; }
