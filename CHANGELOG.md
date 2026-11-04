@@ -10,6 +10,25 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **GPS + wild encounters (B2/B1 layers 1–3).** A pure NMEA 0183 parser
+  (`gps/nmea.h` + root `nmea_parse.cpp`) turns `$…RMC`/`$…GGA` sentences into
+  a `FixState` (lat/lon, knots→m/s, fix quality, satellites, HDOP) with real
+  checksum validation and byte-stream re-sync — host-tested with
+  self-checksummed canned sentences (7 new tests). The Waveshare's LC76G is
+  fed through `Serial0` (GPIO43/44, `HAS_GPS 1`); the Guition runs the same
+  API permanently degraded to "no fix" (`HAS_GPS 0`) and the game falls back
+  to steps. On top of it, a deterministic encounter engine
+  (`gps/spawn.h` + `spawn_table.cpp`) rolls wild Pokémon per 1° grid cell:
+  seven named city tables (Barcelona, Madrid, Paris, London, New York,
+  Tokyo, Sydney), climate pools (tropical/temperate/polar) everywhere else,
+  and distance travelled (GPS-integrated or step-estimated) raises the
+  weight of uncommon/rare species — splitmix64 seeded per boot, shiny at
+  ~1/64, all species inside dex #1–151 (6 new tests). Console: `GPS`,
+  `GPS INJECT <sentence>` for bench testing without an antenna, and `SPAWN`
+  to preview the current roll. The on-hardware gate is still the GPS1 pad
+  antenna; no encounter UI yet — rolls are surfaced by console until the
+  battle/capture screen (B1) lands.
+
 - **Device-to-device link protocol core (F27, groundwork for trade/transfer).**
   A pure, hardware-free P2P protocol now defines how two Tamagotchis
   negotiate: little-endian frames `[type|len|payload|CRC16-CCITT]` capped at

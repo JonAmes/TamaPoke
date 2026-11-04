@@ -26,6 +26,8 @@
 #include "net/ble_steps.h"   // F25: GATT server
 #include "net/wifi_steps.h"  // F26: respaldo HTTP por Wi-Fi
 #endif
+#include "gps/esp_gps.h"  // B2: NMEA -> FixState (glue degradado a no-fix sin GNSS)
+#include "gps/spawn.h"    // B1/B2: tabla de encuentros por celda (logica pura)
 #include <U8g2lib.h>  // fuentes CJK (japones); ver applyLangFont()
 #include <esp_sleep.h>
 #include <driver/gpio.h>
@@ -107,6 +109,11 @@ uint32_t imuSteps = 0;  // ultimo valor del contador del chip (para el delta)
 void linkApply(int32_t d) { pet.addSteps((uint32_t)d); }
 uint32_t linkTotal() { return pet.stepsLifetime(); }
 #endif
+
+// encuentros salvajes (B1/B2): parser NMEA y tabla de celdas son logica pura
+// (gps/, probada en host); el motor de sorteo siembra una semilla por arranque
+// para que la ruta de un dia no se repita entre sesiones.
+EncounterEngine g_enc;
 
 // sprite animado de la SD para la especie actual (si existe el archivo)
 SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
@@ -331,6 +338,11 @@ void setup() {
   bleStepsStart("POK-TAMA", linkApply, linkTotal);
 #endif
 
+  // GNSS embarcado (Waveshare); en Guition es no-op y el juego degrada a
+  // encuentros por pasos. La antena debe ir en el pad GPS1 para captar.
+  gpsStart();
+  g_enc.setSeed(millis() ^ micros());
+
   sdBegin();
   thumbs.load();
 
@@ -460,6 +472,7 @@ void loop() {
 #if HAS_BLE
   wifiStepsLoop();  // F26: atender el POST /steps si el respaldo esta encendido
 #endif
+  gpsPump(millis());  // B2: tragar NMEA del LC76G y actualizar FixState
 
   // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
   static uint32_t lastHealth = 0;
@@ -657,6 +670,30 @@ void handleSerial() {
     }
     Serial.println("DONE");
 #endif
+  } else if (line == "GPS") {  // estado del GNSS (B2)
+    const FixState &f = gpsFix();
+    Serial.printf("fix=%d lat=%.6f lon=%.6f spd=%.2f sats=%u hdop=%.1f m=%.0f\n",
+                  f.hasFix ? 1 : 0, f.latDeg, f.lonDeg, (double)f.speedMs,
+                  (unsigned)f.sats, f.hdopX10 / 10.0, (double)gpsTravelledM());
+    Serial.println("DONE");
+  } else if (line.startsWith("GPS INJECT ")) {  // frase NMEA de taller (sin antena)
+    bool ok = gpsInjectLine(line.c_str() + 11, millis());
+    Serial.printf("parsed=%d\n", ok ? 1 : 0);
+    Serial.println("DONE");
+  } else if (line == "SPAWN") {  // que bicho saldria ahora (B1/B2 capa 1+3)
+    FixState fx = gpsFix();
+    float dist = gpsTravelledM();
+    if (!fx.hasFix) dist = (float)pet.stepsDayCount() * 0.75f;  // degradado: pasos->m
+    WildSpawn w = g_enc.roll(fx, dist, millis());
+    Serial.printf("cell=%s dist=%.0f tier=%d -> #%u %s nv%u%s\n",
+                  fx.hasFix ? (spawnTableName(spawnCellKey(fx.latDeg, fx.lonDeg))
+                               ? spawnTableName(spawnCellKey(fx.latDeg, fx.lonDeg))
+                               : "climatica")
+                            : "sin-fix",
+                    (double)dist, (int)EncounterEngine::rarityTier(dist),
+                    w.species, dexName((int16_t)w.species), w.level,
+                    w.shiny ? " SHINY!" : "");
+    Serial.println("DONE");
   } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);

@@ -9,8 +9,8 @@ SRC_DIR  := ..
 BUILD    := build
 BIN      := $(BUILD)/tamapoke_tests
 
-SOURCES := main.cpp shim/shim.cpp test_pet.cpp test_party.cpp test_dex.cpp test_i18n.cpp test_blit.cpp test_batcurve.cpp test_power.cpp test_steplink.cpp test_link.cpp \
-           $(SRC_DIR)/pet.cpp $(SRC_DIR)/i18n.cpp $(SRC_DIR)/step_link.cpp $(SRC_DIR)/link_protocol.cpp
+SOURCES := main.cpp shim/shim.cpp test_pet.cpp test_party.cpp test_dex.cpp test_i18n.cpp test_blit.cpp test_batcurve.cpp test_power.cpp test_steplink.cpp test_link.cpp test_nmea.cpp test_spawn.cpp \
+           $(SRC_DIR)/pet.cpp $(SRC_DIR)/i18n.cpp $(SRC_DIR)/step_link.cpp $(SRC_DIR)/link_protocol.cpp $(SRC_DIR)/nmea_parse.cpp $(SRC_DIR)/spawn_table.cpp
 
 .PHONY: all run clean asan
 all: run
