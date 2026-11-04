@@ -28,6 +28,7 @@
 #endif
 #include "gps/esp_gps.h"  // B2: NMEA -> FixState (glue degradado a no-fix sin GNSS)
 #include "gps/spawn.h"    // B1/B2: tabla de encuentros por celda (logica pura)
+#include "battle.h"       // B1: nucleo puro de combate/captura
 #include <U8g2lib.h>  // fuentes CJK (japones); ver applyLangFont()
 #include <esp_sleep.h>
 #include <driver/gpio.h>
@@ -114,6 +115,21 @@ uint32_t linkTotal() { return pet.stepsLifetime(); }
 // (gps/, probada en host); el motor de sorteo siembra una semilla por arranque
 // para que la ruta de un dia no se repita entre sesiones.
 EncounterEngine g_enc;
+
+// ---- escena de combate contra salvajes (B1) ----
+// el disparo acumula distancia: metros GPS reales si hay fix; si no, pasos
+// del dia x 0.75 m. Al alcanzar ENC_TRIGGER_M se tira del motor de encuentros.
+#define ENC_TRIGGER_M 250.0f
+bool battleOpen = false, battleOver = false;
+uint8_t battleResult = 0;            // resultado terminal (para el epilogo)
+uint16_t battleSpecies = 0;          // salvaje en liza (sprites y captura)
+bool battleShiny = false;
+Battle g_battle;
+PmdMon bPmd; SdMon bMon;             // sprite del salvaje (PMD o respaldo B/N)
+char battleMsg[40];                  // linea de narracion central
+int16_t battleFw = 0, battleFp = 0;  // flotantes de dano (salvaje / jugador)
+uint32_t battleFloatUntil = 0;
+float encWalkM = 0.0f;               // metros estimados por pasos acumulados
 
 // sprite animado de la SD para la especie actual (si existe el archivo)
 SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
@@ -473,6 +489,7 @@ void loop() {
   wifiStepsLoop();  // F26: atender el POST /steps si el respaldo esta encendido
 #endif
   gpsPump(millis());  // B2: tragar NMEA del LC76G y actualizar FixState
+  battlePump(now);    // B1: distancia recorrida -> encuentro -> escena de combate
 
   // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
   static uint32_t lastHealth = 0;
@@ -694,6 +711,32 @@ void handleSerial() {
                     w.species, dexName((int16_t)w.species), w.level,
                     w.shiny ? " SHINY!" : "");
     Serial.println("DONE");
+  } else if (line == "BATTLE" || line.startsWith("BATTLE ")) {  // fuerza un combate (banco de pruebas)
+    if (pet.isEgg() || pet.awaitingStarter()) {
+      Serial.println("sin bicho activo: combate no");
+      Serial.println("DONE");
+    } else {
+      uint16_t dex = 0, lv = 0;
+      bool sh = false;
+      if (line.length() > 6) {
+        int s1 = line.indexOf(' ', 7);
+        dex = (uint16_t)line.substring(7, s1 < 0 ? line.length() : s1).toInt();
+        if (s1 > 0) lv = (uint16_t)line.substring(s1 + 1).toInt();
+      }
+      if (!dex) {  // sin dex: tira del motor con la distancia de ahora
+        FixState fx = gpsFix();
+        float dist = gpsTravelledM();
+        if (!fx.hasFix) dist = (float)pet.stepsDayCount() * 0.75f;
+        WildSpawn sp = g_enc.roll(fx, dist, millis());
+        dex = sp.species; lv = sp.level; sh = sp.shiny;
+      }
+      if (!dex) Serial.println("motor sin spawn (sin-fix?)");
+      else {
+        battleStart(dex, lv ? lv : 10, sh);
+        Serial.printf("battle #%u nv%u shiny=%d\n", dex, lv, sh);
+      }
+      Serial.println("DONE");
+    }
   } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);
@@ -758,6 +801,249 @@ bool inPetZone(int16_t x, int16_t y) {
 }
 
 // el toque se resuelve al LEVANTAR el dedo para distinguir tap de deslizar
+// ===================== escena de combate (B1) ============================
+// el disparo lo hace battlePump() desde loop(); aqui van el glue de Pet,
+// la resolucion y el pintado. La logica de turnos vive en battle.cpp.
+void drawGameScene();  // prototipo (fondo del habitat, definida mas abajo)
+
+static const char *battleSideName(const BattleSide &s) {
+  if (&s == &g_battle.player() && pet.nick[0]) return pet.nick;
+  return dexName((int16_t)s.species);
+}
+
+static void battleSay(const char *fmt, const char *arg) {
+  if (arg) snprintf(battleMsg, sizeof(battleMsg), fmt, arg);
+  else snprintf(battleMsg, sizeof(battleMsg), "%s", fmt);
+}
+
+static void battleLoadSprites() {
+  bPmd.unload();
+  bMon.unload();
+  if (battleSpecies >= 1 && battleSpecies <= DEX_COUNT) {
+    bPmd.load(battleSpecies, battleShiny);                 // principal: PMD
+    if (!bPmd.loaded) bMon.load(battleSpecies, battleShiny);  // respaldo: B/N
+  }
+}
+
+void battleStart(uint16_t dex, uint16_t level, bool shiny) {
+  battleSpecies = dex;
+  battleShiny = shiny;
+  BattleSide pl;
+  pl.species = pet.speciesId;
+  pl.level = pet.level();
+  pl.atk = pet.atkStat();
+  pl.def = pet.defStat();
+  pl.spe = pet.speStat();
+  pl.hpMax = battleHpMax(DEX_TBL[pet.speciesId].bHp, pl.level);
+  pl.hp = pl.hpMax;
+  pl.shiny = pet.shiny;
+  g_battle.setSeed(((uint64_t)millis() << 32) | micros());
+  g_battle.start(pl, battleWildSide(dex, level, shiny));
+  battleLoadSprites();
+  battleOver = false;
+  battleResult = 0;
+  battleFw = battleFp = 0;
+  battleFloatUntil = 0;
+  battleSay(T(S_BT_WILD_FMT), dexName((int16_t)dex));
+  sfxPlay(SFX_TAP);
+  battleOpen = true;
+}
+
+// coste para la mascota virtual: los PV no persisten nunca; lo que duele de
+// verdad es la energia y la alegria (la mascota no "muere": queda noqueada)
+static void battleEnd(uint8_t res) {
+  battleResult = res;
+  battleOver = true;
+  if (res == B_WILD_FAINTED) {
+    pet.energy = (uint8_t)(pet.energy > 8 ? pet.energy - 8 : 0);
+    battleSay(T(S_BT_WON), nullptr);
+    sfxPlay(SFX_MEDAL);
+  } else if (res == B_PLAYER_FAINTED) {
+    pet.energy = (uint8_t)(pet.energy > 15 ? pet.energy - 15 : 0);
+    pet.joy = (uint8_t)(pet.joy > 10 ? pet.joy - 10 : 0);
+    battleSay(T(S_BT_FAINTED_FMT), battleSideName(g_battle.player()));
+    sfxPlay(SFX_DENY);
+  } else if (res == B_CAUGHT) {
+    PetRecord rec;
+    rec.used = true;
+    rec.speciesId = (int16_t)battleSpecies;
+    rec.shiny = battleShiny;
+    // la edad simula el nivel con el que cayo: nivel = horas de vida
+    uint16_t wl = g_battle.wild().level;
+    rec.ageMinutes = (uint32_t)(wl ? wl - 1 : 0) * MINUTES_PER_LEVEL;
+    rec.geneAtk = (uint8_t)random(90, 111);
+    rec.geneDef = (uint8_t)random(90, 111);
+    rec.geneSpe = (uint8_t)random(90, 111);
+    if (party.add(rec)) {
+      pet.registerSpecies(battleSpecies);  // alta en la Pokedex
+      battleSay(T(S_BT_JOINED_FMT), dexName((int16_t)battleSpecies));
+      sfxPlay(SFX_MEDAL);
+    } else {
+      battleSay(T(S_BT_FULL_FMT), dexName((int16_t)battleSpecies));
+      sfxPlay(SFX_DENY);
+    }
+    gpsTravelledReset();
+    encWalkM = 0.0f;
+  } else if (res == B_RAN) {
+    battleSay(T(S_BT_RAN), nullptr);
+    sfxPlay(SFX_TAP);
+  }
+  party.flushSave();
+}
+
+// botones: tocar cualquier parte al final sale a la home
+#define BT_Y0 418
+#define BT_Y1 456
+void battleTap(int x, int y) {
+  if (battleOver) {
+    battleOpen = false;
+    battleOver = false;
+    battleMsg[0] = 0;
+    sfxPlay(SFX_TAP);
+    return;
+  }
+  uint8_t act = 0xFF;
+  if (y >= BT_Y0 && y <= BT_Y1) {
+    if (x >= 104 && x <= 190) act = B_ACT_ATTACK;
+    else if (x >= 196 && x <= 268) act = B_ACT_CAPTURE;
+    else if (x >= 274 && x <= 360) act = B_ACT_RUN;
+  }
+  if (act == 0xFF) return;
+  sfxPlay(SFX_TAP);
+  uint16_t wBefore = g_battle.wild().hp, pBefore = g_battle.player().hp;
+  uint8_t res = g_battle.act(act);
+  battleFw = (int16_t)(wBefore - g_battle.wild().hp);
+  battleFp = (int16_t)(pBefore - g_battle.player().hp);
+  if (battleFw || battleFp) battleFloatUntil = millis() + 1300;
+  if (res == B_CAPTURE_FAILED) {
+    battleSay(T(S_BT_FREED), nullptr);
+    sfxPlay(SFX_DENY);
+  } else if (res == B_LIVE) {
+    if (act == B_ACT_CAPTURE) battleSay("", nullptr);  // sin narracion: hablan los flotantes
+  } else {
+    battleEnd(res);
+  }
+}
+
+// disparo de encuentros: metros GPS si hay fix, si no pasos del dia estimados
+void battlePump(uint32_t now) {
+  if (battleOpen) return;
+  if (pet.awaitingStarter() || pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  if (galleryOpen || gameOpen || sackOpen || kbOpen || clockOpen || cardOpen) return;
+  if (choiceKind || confirmUntil || feedMenuUntil) return;
+  static uint32_t lastSteps = 0;
+  uint32_t st = pet.stepsDayCount();
+  if (st < lastSteps) lastSteps = st;  // cambio de dia: la cuenta diario se resetea
+  encWalkM += (float)(st - lastSteps) * 0.75f;
+  lastSteps = st;
+  float travel = gpsTravelledM();
+  float dist = travel > 10.0f ? travel : encWalkM;
+  if (dist < ENC_TRIGGER_M) return;
+  WildSpawn sp = g_enc.roll(gpsFix(), dist, now);
+  if (!sp.species) return;
+  battleStart(sp.species, sp.level, sp.shiny);
+}
+
+// barra de PV con nombre encima (estilo ficha, compacta)
+static void battleBar(int x, int y, int w, const char *name, uint16_t hp, uint16_t hpMax) {
+  setSize(1);
+  setCur(x, y);
+  printT(name);
+  int by = y + 13;
+  gfx->drawRect(x, by, w, 8, inkColor());
+  uint16_t col = UI_BAR_OK;
+  if (hpMax && (uint32_t)hp * 2 < (uint32_t)hpMax) col = UI_BAR_WARN;
+  if (hpMax && (uint32_t)hp * 4 < (uint32_t)hpMax) col = UI_BAR_BAD;
+  uint32_t f = hpMax ? (uint32_t)hp * (uint32_t)(w - 2) / hpMax : 0;
+  if (f) gfx->fillRect(x + 1, by + 1, (int)f, 6, col);
+  setSize(1);
+  char hv[12];
+  snprintf(hv, sizeof(hv), "%u/%u", hp, hpMax);
+  setCur(x + w - (int)strlen(hv) * 6, by + 10);
+  printT(hv);
+}
+
+static void battleBlitSd(SdMon &m, int cx, int groundY, uint32_t now) {
+  int s = 2;
+  int w = m.w * s, h = m.h * s;
+  uint16_t fm = m.frameMs ? m.frameMs : 100;
+  uint16_t fi = (now / fm) % m.frames;
+  const uint8_t *fr = m.data + (uint32_t)fi * m.w * m.h;
+  int px = cx - w / 2, py = groundY - h;
+  for (int r = 0; r < m.h; r++) {
+    const uint8_t *row = fr + r * m.w;
+    forRuns(m.w, [&](int c) { return indexedKey(row[c], false); },
+            [&](int c0, int len, int k) { gfx->fillRect(px + c0 * s, py + r * s, len * s, s, m.pal[k]); });
+  }
+}
+
+static void battleBtn(const char *label, int x0, int x1, uint16_t fill) {
+  gfx->fillRoundRect(x0, BT_Y0, x1 - x0, BT_Y1 - BT_Y0, 8, fill);
+  gfx->drawRoundRect(x0, BT_Y0, x1 - x0, BT_Y1 - BT_Y0, 8, inkColor());
+  setSize(2);
+  int tw = textW(label, 2);
+  setCur((x0 + x1) / 2 - tw / 2, BT_Y0 + 11);
+  printT(label);
+}
+
+void renderBattle() {
+  uint32_t now = millis();
+  drawGameScene();  // el habitat hace de campo de batalla
+
+  const BattleSide &w = g_battle.wild(), &pl = g_battle.player();
+
+  // salvaje arriba a la derecha, sobre el monticulo; jugador abajo a la izquierda
+  if (bPmd.loaded && bPmd.acts[PMD_IDLE].frames)
+    drawPmdActM(bPmd, PMD_IDLE, 322, 300, now, true, false, 3);
+  else if (bMon.loaded)
+    battleBlitSd(bMon, 322, 300, now);
+  if (pmd.loaded && pmd.acts[PMD_IDLE].frames)
+    drawPmdAct(PMD_IDLE, 146, 392, now, true, false, 3);
+  else if (mon.loaded)
+    battleBlitSd(mon, 146, 392, now);
+
+  battleBar(258, 62, 156, battleSideName(w), w.hp, w.hpMax);
+  battleBar(44, 318, 156, battleSideName(pl), pl.hp, pl.hpMax);
+
+  // flotantes de dano (un latido sobre cada barra)
+  if (battleFloatUntil && now < battleFloatUntil) {
+    char f[8];
+    setSize(2);
+    if (battleFw) {
+      snprintf(f, sizeof(f), "-%d", battleFw);
+      setCur(330 - (int)strlen(f) * 6, 58);
+      printT(f);
+    }
+    if (battleFp) {
+      snprintf(f, sizeof(f), "-%d", battleFp);
+      setCur(140 - (int)strlen(f) * 6, 314);
+      printT(f);
+    }
+  }
+
+  // narracion central
+  if (battleMsg[0]) {
+    setSize(2);
+    int tw = textW(battleMsg, 2);
+    if (tw > 380) setSize(1), tw = textW(battleMsg, 1);
+    setCur(232 - tw / 2, 344);
+    printT(battleMsg);
+  }
+
+  if (!battleOver) {
+    battleBtn(T(S_BT_FIGHT), 104, 190, UI_BAR_BAD);
+    battleBtn(T(S_BT_CATCH), 196, 268, UI_BAR_OK);
+    battleBtn(T(S_BT_RUN), 274, 360, inkColor());
+  } else {
+    // epilogo: toca para volver
+    setSize(1);
+    const char *go = "OK";
+    setCur(232 - (int)strlen(go) * 3, BT_Y0 + 14);
+    printT(go);
+  }
+}
+
+
 void handleTouch() {
   static uint32_t lastPoll = 0;
   if (millis() - lastPoll < 20) return;  // 50 Hz le sobra a un dedo
@@ -836,7 +1122,7 @@ void openClock();  // prototipo
 
 void onSwipeV(int dir) {
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
-  if (gameOpen || galleryOpen || kbOpen || sackOpen || pet.ceremony) return;
+  if (gameOpen || galleryOpen || kbOpen || sackOpen || battleOpen || pet.ceremony) return;
   if (clockOpen) { clockOpen = false; return; }
   if (cardOpen) {
     if (dir < 0) cardOpen = false;  // arriba cierra la ficha
@@ -853,7 +1139,7 @@ void onSwipeV(int dir) {
 // deslizar: dir +1 = hacia la derecha
 void onSwipe(int dir) {
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
-  if (gameOpen || kbOpen || clockOpen) return;
+  if (gameOpen || kbOpen || clockOpen || battleOpen) return;
   if (cardOpen) {  // dentro de la ficha: cambiar entre las 4 paginas
     int p = (int)cardPage + (dir > 0 ? -1 : 1);  // izquierda avanza
     cardPage = p < 0 ? 0 : (p > 3 ? 3 : p);
@@ -913,6 +1199,10 @@ void onTap(int16_t x, int16_t y) {
     return;
   }
   if (pet.ceremony) return;  // durante la despedida no hay botones
+  if (battleOpen) {
+    battleTap(x, y);
+    return;
+  }
   if (cardOpen) {
     if (cardPage == 0 && y < 84) openKeyboard();  // tocar el nombre = renombrar
     else if (cardPage == 1 && y >= 300 && y <= 340 && x >= 96 && x <= 370) {
@@ -1276,7 +1566,7 @@ void printT(const char *s) {
 // mientras su "clave" no cambie no se repintan ni se vuelcan por QSPI.
 static bool staticScreen() {
   if (pet.awaitingStarter()) return true;
-  if (galleryOpen || gameOpen || sackOpen) return false;  // la galeria gestiona su propio repintado
+  if (galleryOpen || gameOpen || sackOpen || battleOpen) return false;  // gestiona su propio repintado
   if (kbOpen || clockOpen) return true;
   return cardOpen && cardPage != 0;  // la pagina 0 tiene el retrato animado
 }
@@ -1319,6 +1609,10 @@ bool render() {
   }
   if (pet.awaitingStarter()) {  // primera partida: elegir inicial (prioridad total)
     renderStarterSelect();
+    return true;
+  }
+  if (battleOpen) {
+    renderBattle();
     return true;
   }
   if (galleryOpen) {

@@ -58,6 +58,12 @@ static const ExpectedFmt EXPECTED[] = {
   { S_FAREWELL_BTN,    "%s" },
   { S_RUNAWAY_BTN,     "%s" },
   { S_STEPS_FMT,       "%u,%u" },
+  { S_BT_WILD_FMT,     "%s" },
+  { S_BT_HURT_FMT,     "%u" },
+  { S_BT_CAUGHT_FMT,   "%s" },
+  { S_BT_FAINTED_FMT,  "%s" },
+  { S_BT_JOINED_FMT,   "%s" },
+  { S_BT_FULL_FMT,     "%s" },
 };
 static const int NUM_EXPECTED = (int)(sizeof(EXPECTED) / sizeof(EXPECTED[0]));
 

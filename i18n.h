@@ -61,6 +61,13 @@ enum StrId : uint8_t {
   S_CHOOSE_STARTER,  // titulo de la eleccion del inicial (primera vez)
   S_NO_SPRITES, S_LOAD_SPRITES,  // aviso cuando falta el sprite en la SD
   S_STEPS_FMT,       // chip de pasos en vivo: "PASOS 1234/8000"
+  // escena de combate contra salvajes (B1). Sin acentos en FR/DE/ES/IT/PT:
+  // la fuente usa escapes octales y es mas seguro escribirlos limpios.
+  S_BT_WILD_FMT,     // "¡%s SALVAJE APARECE!"
+  S_BT_FIGHT, S_BT_CATCH, S_BT_RUN,
+  S_BT_HURT_FMT,     // "-%u" flotante sobre la barra de PV
+  S_BT_CAUGHT_FMT, S_BT_FREED, S_BT_WON,
+  S_BT_FAINTED_FMT, S_BT_JOINED_FMT, S_BT_FULL_FMT, S_BT_RAN,
   STR_COUNT
 };
 

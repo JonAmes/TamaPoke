@@ -10,6 +10,20 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **Battle & capture screen (B1).** A wild encounter now walks into a real
+  battle. A deterministic pure core (`battle.h` + root `battle.cpp`, 8 new
+  host tests) runs turns, damage (±10% variance), run odds scaled by speed
+  and capture odds scaled by rarity × HP deficit × level gap — seeded
+  splitmix64, no `Pet`/NVS inside. On screen: habitat background, animated
+  wild sprite (PMD with B/W fallback), two HP bars with floating damage,
+  and three touch buttons (FIGHT / CATCH / RUN) in all eight languages.
+  Encounters fire from distance travelled: real GPS metres when there is a
+  fix, otherwise daily steps × 0.75 m (trigger at 250 m). Capturing adds the
+  mon to the party at its battle level (party full → it is released),
+  registers it in the Pokédex and rolls fresh 90–110% genes; losing only
+  stings energy/joy — the virtual pet never dies. Console: `BATTLE` (roll
+  the engine now) or `BATTLE <dex> [level]` to force a duel on the bench.
+
 - **GPS + wild encounters (B2/B1 layers 1–3).** A pure NMEA 0183 parser
   (`gps/nmea.h` + root `nmea_parse.cpp`) turns `$…RMC`/`$…GGA` sentences into
   a `FixState` (lat/lon, knots→m/s, fix quality, satellites, HDOP) with real

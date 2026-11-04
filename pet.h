@@ -191,6 +191,9 @@ public:
   void declineFarewell() { farDeclinedAge = ageMinutes + 1440; } // re-ofrece dentro de 1 dia
   // primera partida: el jugador elige inicial (Bulbasaur/Charmander/Squirtle)
   bool awaitingStarter() const { return starterPick; }
+  // alta en la Pokedex al capturar un salvaje (B1); hatch/evolve
+  // tambien la usan por dentro
+  void registerSpecies(int16_t dex);
   void chooseStarter(int16_t dex) { eggTarget = dex; starterPick = false; save(); }
   void factoryReset() { prefs.clear(); }  // borra la NVS (test: comando serie WIPE)
   void dbgRunawayReady() { fullness = joy = energy = hygiene = 0; neglectTicks = RUNAWAY_TICKS; }  // test
@@ -273,7 +276,6 @@ private:
   void checkMedals();
   void tick();
   void hatch();
-  void registerSpecies(int16_t dex);
   void save();
   void load();
   static uint8_t clamp100(int v) { return v < 0 ? 0 : (v > 100 ? 100 : v); }

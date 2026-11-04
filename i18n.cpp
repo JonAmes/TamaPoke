@@ -36,6 +36,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Elige tu inicial",
     "Sin sprites", "C\240rgalos en la SD",
     "PASOS %u/%u",
+    // combate (B1)
+    "%s SALVAJE APARECE!",
+    "LUCHAR",
+    "ATRAPAR",
+    "HUIR",
+    "-%u",
+    "%s ATRAPADO!",
+    "Se suelta!",
+    "VICTORIA!",
+    "%s caido...",
+    "%s entra al grupo!",
+    "Grupo lleno: suelto a %s",
+    "Escapaste!",
   },
   // ---------------- EN ----------------
   {
@@ -66,6 +79,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Choose your starter",
     "No sprites", "Load them onto the SD",
     "STEPS %u/%u",
+    // combate (B1)
+    "WILD %s APPEARED!",
+    "FIGHT",
+    "CATCH",
+    "RUN",
+    "-%u",
+    "%s CAUGHT!",
+    "Broke free!",
+    "VICTORY!",
+    "%s fainted!",
+    "%s joined the party!",
+    "Party full: %s is released",
+    "Got away!",
   },
   // ---------------- FR ----------------
   {
@@ -96,6 +122,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Choisis ton starter",
     "Pas de sprites", "Charge-les sur la SD",
     "PAS %u/%u",
+    // combate (B1)
+    "%s SAUVAGE APPARAIT!",
+    "COMBAT",
+    "CAPTURE",
+    "FUIR",
+    "-%u",
+    "%s CAPTURE !",
+    "Il se libere !",
+    "VICTOIRE !",
+    "%s est K.O. !",
+    "%s rejoint l'equipe !",
+    "Groupe plein: %s relache",
+    "Fuite reussie !",
   },
   // ---------------- DE ----------------
   // El aleman si lleva dieresis: la fuente 5x7 del firmware es una tabla CP437
@@ -131,6 +170,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "W\204hle deinen Starter",
     "Keine Sprites", "Auf die SD laden",
     "SCHRITTE %u/%u",
+    // combate (B1)
+    "WILDNES %s ERSCHEINT!",
+    "KAMPF",
+    "FANGEN",
+    "FLUCHT",
+    "-%u",
+    "%s FINGEN!",
+    "Es befreit sich!",
+    "SIEG!",
+    "%s wurde K.O.!",
+    "%s kommt zur Gruppe!",
+    "Gruppe voll: %s geht frei",
+    "Entkommen!",
   },
   // ---------------- IT ----------------
   {
@@ -161,6 +213,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Scegli l'iniziale",
     "Senza sprite", "Caricali sulla SD",
     "PASSI %u/%u",
+    // combate (B1)
+    "%s SELVAGGIO APPARE!",
+    "LOTTA",
+    "ACCHIAPPA",
+    "SCAPPA",
+    "-%u",
+    "%s ACCHIAPPATO!",
+    "Si libera!",
+    "VITTORIA!",
+    "%s e K.O.!",
+    "%s si unisce al gruppo!",
+    "Gruppo pieno: %s rilasciato",
+    "Sei scappato!",
   },
   // ---------------- PT ----------------
   {
@@ -191,6 +256,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Escolhe o inicial",
     "Sem sprites", "Carrega-os no SD",
     "PASSOS %u/%u",
+    // combate (B1)
+    "%s SELVAGEM APARECE!",
+    "LUTAR",
+    "CAPTURAR",
+    "FUGIR",
+    "-%u",
+    "%s CAPTURADO!",
+    "Soltou-se!",
+    "VITORIA!",
+    "%s desmaiou!",
+    "%s entrou no grupo!",
+    "Grupo cheio: %s solto",
+    "Escapaste!",
   },
   // ---------------- JA ----------------
   {
@@ -244,6 +322,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
 
     "スプライトなし", "SDにいれてください",
     "ステップ %u/%u",
+    // combate (B1)
+    "やせいの %s が あらわれた!",
+    "たたかう",
+    "とる",
+    "にげる",
+    "-%u",
+    "%s を とった!",
+    "うまく いかなかった!",
+    "かち かち!",
+    "%s は たおれた!",
+    "%s が なかに きた!",
+    "なかまがいっぱい。%s を はなした",
+    "うまく にげられた!",
   },
   // ---------------- KO ----------------
   // Los especificadores van en el MISMO ORDEN que en la fila inglesa aunque
@@ -279,6 +370,19 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "스타터를 선택하세요",
     "스프라이트 없음", "SD 카드에 넣어주세요",
     "걸음 %u/%u",
+    // combate (B1)
+    "야생 %s 나타남!",
+    "싸운다",
+    "잡는다",
+    "도망친다",
+    "-%u",
+    "%s 잡았다!",
+    "벗어났다!",
+    "승리!",
+    "%s 기절했다!",
+    "%s 파티 합류!",
+    "파티 가득: %s 놓아줌",
+    "도망쳤다!",
   },
 };
 
