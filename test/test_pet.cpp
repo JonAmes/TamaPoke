@@ -418,7 +418,7 @@ TEST(train, saco_da_un_punto_cada_4_golpes_con_tope) {
   CHECK_EQ(p.trainStrength(40), (uint8_t)10);
   CHECK_EQ(p.trAtk, (uint8_t)10);
   CHECK_MSG(p.trainStrength(1000) == 18, "tope de 18 por sesion");
-  CHECK_EQ(p.strHi, (uint16_t)1000);
+  CHECK_EQ(p.dev.strHi, (uint16_t)1000);
 }
 
 // Arreglado al portar la bateria: trainStrength() devolvia la subida teorica
@@ -462,9 +462,9 @@ TEST(play, minijuego_entrena_velocidad_y_guarda_record) {
   CHECK_EQ(p.trSpe, (uint8_t)4);
   CHECK_EQ(p.joy, (uint8_t)45);   // +5 +30 por marcar mas de 15
   CHECK_EQ(p.weight, (uint8_t)10);  // 50 - 20*2
-  CHECK_EQ(p.gameHi, (uint16_t)20);
+  CHECK_EQ(p.dev.gameHi, (uint16_t)20);
   p.playResult(5);
-  CHECK_MSG(p.gameHi == 20, "un resultado peor no baja el record");
+  CHECK_MSG(p.dev.gameHi == 20, "un resultado peor no baja el record");
 }
 
 TEST(play, jugar_sube_felicidad_y_cansa) {
@@ -525,10 +525,10 @@ TEST(mood, refleja_el_estado) {
 TEST(dexreg, bitmap_cubre_1_a_151) {
   Pet p;
   makePet(p, 4);
-  memset(p.dexReg, 0, sizeof(p.dexReg));
+  memset(p.dev.dexReg, 0, sizeof(p.dev.dexReg));
   CHECK_EQ(p.registeredCount(), (uint16_t)0);
   for (int16_t d = 1; d <= 151; d++) {
-    p.dexReg[(d - 1) >> 3] |= (uint8_t)(1 << ((d - 1) & 7));
+    p.dev.dexReg[(d - 1) >> 3] |= (uint8_t)(1 << ((d - 1) & 7));
     CHECK(p.isRegistered(d));
   }
   CHECK_EQ(p.registeredCount(), (uint16_t)151);
@@ -537,7 +537,7 @@ TEST(dexreg, bitmap_cubre_1_a_151) {
 TEST(dexreg, fuera_de_rango_no_esta_registrado) {
   Pet p;
   makePet(p, 4);
-  memset(p.dexReg, 0xFF, sizeof(p.dexReg));
+  memset(p.dev.dexReg, 0xFF, sizeof(p.dev.dexReg));
   CHECK(!p.isRegistered(0));
   CHECK(!p.isRegistered(-1));
   CHECK(!p.isRegistered(152));
@@ -549,8 +549,8 @@ TEST(dexreg, linea_incompleta_se_detecta) {
   Pet p;
   makePet(p, 1);  // BULBASAUR -> IVYSAUR -> VENUSAUR
   CHECK(p.lineHasUnregistered(1));
-  p.dexReg[(2 - 1) >> 3] |= (uint8_t)(1 << ((2 - 1) & 7));
-  p.dexReg[(3 - 1) >> 3] |= (uint8_t)(1 << ((3 - 1) & 7));
+  p.dev.dexReg[(2 - 1) >> 3] |= (uint8_t)(1 << ((2 - 1) & 7));
+  p.dev.dexReg[(3 - 1) >> 3] |= (uint8_t)(1 << ((3 - 1) & 7));
   CHECK_MSG(!p.lineHasUnregistered(1), "linea 1-2-3 completa");
 }
 
@@ -559,7 +559,7 @@ TEST(dexreg, la_rama_de_eevee_cuenta_las_tres) {
   makePet(p, DEX_EEVEE);
   CHECK(p.lineHasUnregistered(DEX_EEVEE));
   for (int16_t d = 134; d <= 136; d++)
-    p.dexReg[(d - 1) >> 3] |= (uint8_t)(1 << ((d - 1) & 7));
+    p.dev.dexReg[(d - 1) >> 3] |= (uint8_t)(1 << ((d - 1) & 7));
   CHECK(!p.lineHasUnregistered(DEX_EEVEE));
 }
 
@@ -591,7 +591,7 @@ TEST(egg, el_primer_huevo_es_un_inicial_clasico) {
 TEST(egg, una_escapada_castiga_la_rareza) {
   Pet p;
   makePet(p, 4);
-  p.lastEnd = CER_RUNAWAY;
+  p.dev.lastEnd = CER_RUNAWAY;
   for (int seed = 1; seed <= 60; seed++) {
     randomSeed(seed);
     int16_t d = p.pickEggSpecies();
@@ -605,13 +605,13 @@ TEST(streak, el_primer_cuidado_del_dia_suma) {
   makePet(p, 4);
   p.setClock(100u * 86400);
   p.caress();
-  CHECK_EQ(p.streak, (uint16_t)1);
-  CHECK_EQ(p.bestStreak, (uint16_t)1);
+  CHECK_EQ(p.dev.streak, (uint16_t)1);
+  CHECK_EQ(p.dev.bestStreak, (uint16_t)1);
   p.caress();
-  CHECK_MSG(p.streak == 1, "el segundo cuidado del mismo dia no suma");
+  CHECK_MSG(p.dev.streak == 1, "el segundo cuidado del mismo dia no suma");
   p.setClock(101u * 86400);
   p.caress();
-  CHECK_EQ(p.streak, (uint16_t)2);
+  CHECK_EQ(p.dev.streak, (uint16_t)2);
 }
 
 TEST(streak, un_dia_perdido_reinicia) {
@@ -623,15 +623,15 @@ TEST(streak, un_dia_perdido_reinicia) {
   p.caress();
   p.setClock(105u * 86400);  // hueco de dias
   p.caress();
-  CHECK_EQ(p.streak, (uint16_t)1);
-  CHECK_MSG(p.bestStreak == 2, "el record de racha se conserva");
+  CHECK_EQ(p.dev.streak, (uint16_t)1);
+  CHECK_MSG(p.dev.bestStreak == 2, "el record de racha se conserva");
 }
 
 TEST(streak, sin_reloj_no_hay_racha) {
   Pet p;
   makePet(p, 4);
   p.caress();
-  CHECK_EQ(p.streak, (uint16_t)0);
+  CHECK_EQ(p.dev.streak, (uint16_t)0);
 }
 
 TEST(streak, celebra_los_hitos) {
@@ -641,19 +641,19 @@ TEST(streak, celebra_los_hitos) {
     p.setClock(d * 86400);
     p.caress();
   }
-  CHECK_EQ(p.streak, (uint16_t)3);
+  CHECK_EQ(p.dev.streak, (uint16_t)3);
   CHECK_MSG(p.showMilestone(), "hito de 3 dias celebrado");
-  CHECK_EQ(p.lastMilestone, (uint16_t)3);
+  CHECK_EQ(p.dev.lastMilestone, (uint16_t)3);
 }
 
 TEST(bonus, racha_y_vinculo_mejoran_el_huevo) {
   Pet p;
   makePet(p, 4);
   CHECK_EQ(p.careBonus(), 0);
-  p.streak = 30;
+  p.dev.streak = 30;
   p.bond = 100;
   CHECK_EQ(p.careBonus(), 14);
-  p.streak = 300;  // la racha se capa a 30
+  p.dev.streak = 300;  // la racha se capa a 30
   CHECK_EQ(p.careBonus(), 14);
 }
 
@@ -676,7 +676,7 @@ TEST(medals, en_forma_llega_al_nivel_5) {
   p.ageMinutes = 4 * 60 - 1;
   advance(p, 1);
   CHECK(p.hasMedal(MED_FIT));
-  CHECK_EQ(p.totalMedals, (uint16_t)1);
+  CHECK_EQ(p.dev.totalMedals, (uint16_t)1);
 
   Pet q;
   makePet(q, 4);
@@ -694,14 +694,14 @@ TEST(medals, cada_medalla_nueva_suma_al_total) {
   advance(p, 1);  // cruza nivel 10: MED_LV10 + MED_FIT de golpe
   CHECK(p.hasMedal(MED_LV10));
   CHECK(p.hasMedal(MED_FIT));
-  CHECK_MSG(p.totalMedals == 2, "el total cuenta cada bit ganado, no cada evento");
+  CHECK_MSG(p.dev.totalMedals == 2, "el total cuenta cada bit ganado, no cada evento");
 }
 
 TEST(medals, forma_final_al_nacer) {
   Pet p;
   makePet(p, 143);  // SNORLAX ya es forma final
   CHECK(p.hasMedal(MED_FINAL));
-  CHECK_EQ(p.totalMedals, (uint16_t)1);
+  CHECK_EQ(p.dev.totalMedals, (uint16_t)1);
 }
 
 TEST(medals, la_baya_favorita_da_medalla) {
@@ -716,12 +716,12 @@ TEST(medals, la_baya_favorita_da_medalla) {
 TEST(medals, el_total_acumula_entre_crianzas) {
   Pet p;
   makePet(p, 143);
-  CHECK_EQ(p.totalMedals, (uint16_t)1);
+  CHECK_EQ(p.dev.totalMedals, (uint16_t)1);
   p.newEgg();
   p.chooseStarter(144);  // ARTICUNO, otra forma final
   p.eggTap(); p.eggTap(); p.eggTap();
   CHECK_MSG(p.medals == MED_FINAL, "las medallas del individuo se reinician");
-  CHECK_MSG(p.totalMedals == 2, "el total del jugador se conserva");
+  CHECK_MSG(p.dev.totalMedals == 2, "el total del jugador se conserva");
 }
 
 // ---------------------------------------------------------------- ceremonias
@@ -750,7 +750,7 @@ TEST(ceremony, la_despedida_deja_un_huevo_nuevo) {
   p.update(millis());
   CHECK(p.isEgg());
   CHECK_EQ(p.ceremony, (uint8_t)CER_NONE);
-  CHECK_EQ(p.lastEnd, (uint8_t)CER_FAREWELL);
+  CHECK_EQ(p.dev.lastEnd, (uint8_t)CER_FAREWELL);
   CHECK_EQ(p.ageMinutes, (uint32_t)0);
 }
 
@@ -798,7 +798,7 @@ TEST(ceremony, soltar_marca_el_final_como_liberacion) {
   makePet(p, 4);
   p.release();
   CHECK_EQ(p.ceremony, (uint8_t)CER_RELEASE);
-  CHECK_EQ(p.lastEnd, (uint8_t)CER_RELEASE);
+  CHECK_EQ(p.dev.lastEnd, (uint8_t)CER_RELEASE);
   mockAdvanceMillis(CEREMONY_MS + 1);
   p.update(millis());
   CHECK(p.isEgg());
@@ -885,24 +885,24 @@ TEST(save, el_estado_sobrevive_a_un_reinicio) {
   Pet a;
   makePet(a, 25);  // PIKACHU
   a.ageMinutes = 1234;
-  a.streak = 9;
-  a.bestStreak = 11;
+  a.dev.streak = 9;
+  a.dev.bestStreak = 11;
   a.bond = 44;
   a.trAtk = 17;
   a.weight = 33;
-  a.gameHi = 21;
+  a.dev.gameHi = 21;
   a.rename("SPARKY");  // rename persiste todo el estado
 
   Pet b;
   b.begin();  // mismo "NVS": simula un reinicio
   CHECK_EQ(b.speciesId, (int16_t)25);
   CHECK_EQ(b.ageMinutes, (uint32_t)1234);
-  CHECK_EQ(b.streak, (uint16_t)9);
-  CHECK_EQ(b.bestStreak, (uint16_t)11);
+  CHECK_EQ(b.dev.streak, (uint16_t)9);
+  CHECK_EQ(b.dev.bestStreak, (uint16_t)11);
   CHECK_EQ(b.bond, (uint8_t)44);
   CHECK_EQ(b.trAtk, (uint8_t)17);
   CHECK_EQ(b.weight, (uint8_t)33);
-  CHECK_EQ(b.gameHi, (uint16_t)21);
+  CHECK_EQ(b.dev.gameHi, (uint16_t)21);
   CHECK_STREQ(b.nick, "SPARKY");
   CHECK(b.isRegistered(25));
   CHECK(!b.awaitingStarter());

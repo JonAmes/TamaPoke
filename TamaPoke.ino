@@ -83,7 +83,8 @@ TouchDrvCST92xx touch;
 // fuente CJK activa: de momento siempre false, la carga llegara con el
 // soporte de japones/coreano/chino (ver PR #13)
 bool gCjkFont = false;
-Pet pet;
+Party party;
+Pet &pet = party.pet;  // companero activo: el bucle y la UI siguen usando `pet.`
 
 // sprite animado de la SD para la especie actual (si existe el archivo)
 SdMon mon;          // sprite B/N (respaldo y minijuego si no hay PMD)
@@ -271,7 +272,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(TP_INT), touchIsr, FALLING);
 #endif
 
-  pet.begin();
+  party.begin();
   sdBegin();
   thumbs.load();
 
@@ -295,7 +296,7 @@ void setup() {
     Serial.printf("RTC sin hora: sembrado en %u%s\n", seed,
                   seen > 1767225600UL ? " (desde la ultima hora guardada)" : "");
   }
-  pet.syncClock(e);
+  party.syncClock(e);
 
   audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
 
@@ -324,7 +325,7 @@ void ensureMon() {
 
 void loop() {
   uint32_t now = millis();
-  pet.update(now);
+  party.update(now);
 
   // el amplificador sigue al estado de sueno (la llamada sale sola si no cambia).
   // Aqui cubre todas las vias: el boton de luz, el sueno nocturno y el que llega
@@ -362,7 +363,7 @@ void loop() {
   // bateria al limite seguro (sin USB): se guarda la partida y se apaga el PMU antes de que la
   // celda baje mas; el RTC conserva la hora
   if (batShouldShutdown() && !usbPresent()) {
-    pet.flushSave();
+    party.flushSave();
     displaySetBrightness(0);
     batPowerOff();
   }
@@ -373,7 +374,7 @@ void loop() {
   // de inactividad la pantalla ya atenua, asi que se vuelca enseguida; el uso
   // activo persiste igual por los guardados de cada accion (comer/jugar/...).
   if (pet.savePending() && (screenOff || dimStage >= 1 || pet.sleeping)) {
-    pet.flushSave();
+    party.flushSave();
   }
 
   // anota la hora real cada 30 s (se persiste en cada save del juego)
@@ -381,7 +382,7 @@ void loop() {
   if (now - lastClock > 30000) {
     lastClock = now;
     uint32_t e = rtcEpoch();
-    if (e) pet.lastSeenEpoch = e;
+    if (e) pet.dev.lastSeenEpoch = e;
   }
 
   // latido de salud cada 5 min (para el soak test; se descarta si no hay monitor)
@@ -516,7 +517,7 @@ void handleSerial() {
   } else if (line.startsWith("TIME ")) {
     uint32_t e = (uint32_t)line.substring(5).toInt();
     rtcSetEpoch(e);
-    pet.setClock(e);
+    party.setClock(e);
     Serial.printf("rtc=%u\n", rtcEpoch());
     Serial.println("DONE");
   } else if (line.startsWith("RTCSET ")) {  // solo RTC (simular apagados en pruebas)
@@ -540,6 +541,18 @@ void handleSerial() {
     }
     Serial.println();
     Serial.println("DONE");
+  } else if (line == "PARTY") {  // estado del party (F34)
+    Serial.printf("activ=%d llenos=%d/%d\n", party.activeSlot(), party.filled(), PARTY_MAX);
+    for (int i = 0; i < PARTY_MAX; i++)
+      if (party.slotUsed(i))
+        Serial.printf(" slot%d %s nv%u com%u fel%u ene%u lim%u\n", i,
+                      party.slots[i].speciesId >= 1 ? DEX_TBL[party.slots[i].speciesId].name : "huevo",
+                      1 + party.slots[i].ageMinutes / MINUTES_PER_LEVEL, party.slots[i].fullness,
+                      party.slots[i].joy, party.slots[i].energy, party.slots[i].hygiene);
+    Serial.println("DONE");
+  } else if (line.startsWith("FOCUS ")) {  // cambiar el foco del party
+    if (party.focus(line.substring(6).toInt())) Serial.println("DONE");
+    else Serial.println("NO");  // slot vacio, fuera de rango o ya activo
   } else if (line == "SHINY") {  // alterna shiny del actual (pruebas)
     pet.shiny = !pet.shiny;
     Serial.printf("shiny=%d\n", pet.shiny);
@@ -549,9 +562,9 @@ void handleSerial() {
     Serial.printf("nick=%s\n", pet.nick);
     Serial.println("DONE");
   } else if (line == "CAREDAY") {  // simula un dia nuevo cuidado (pruebas)
-    pet.setClock(pet.lastSeenEpoch + 86400);
+    party.setClock(pet.dev.lastSeenEpoch + 86400);
     pet.caress();
-    Serial.printf("streak=%u bond=%u medals=0x%X\n", pet.streak, pet.bond, pet.medals);
+    Serial.printf("streak=%u bond=%u medals=0x%X\n", pet.dev.streak, pet.bond, pet.medals);
     Serial.println("DONE");
   } else if (line == "BYE") {
     pet.startFarewell();
@@ -591,8 +604,8 @@ void handleSerial() {
                   pet.geneAtk, pet.geneDef, pet.geneSpe,
                   pet.trAtk, pet.trDef, pet.trSpe, pet.berryKnown);
     Serial.printf("shiny=%d streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
-                  pet.shiny, pet.streak, pet.bestStreak, pet.bond, pet.medals,
-                  pet.totalMedals, pet.nick);
+                  pet.shiny, pet.dev.streak, pet.dev.bestStreak, pet.bond, pet.medals,
+                  pet.dev.totalMedals, pet.nick);
     Serial.println("DONE");
   }
 }
@@ -865,7 +878,7 @@ uint16_t lerp565(uint16_t a, uint16_t b, int i, int n) {
 
 // hora del dia 0-23 (de la hora real cacheada cada 30s; 13 si no hay reloj)
 int sceneHour() {
-  uint32_t e = pet.lastSeenEpoch;
+  uint32_t e = pet.dev.lastSeenEpoch;
   return e ? (int)((e / 3600) % 24) : 13;
 }
 
@@ -1129,12 +1142,12 @@ static uint32_t screenKey() {
     h = mixKey(h, audioEnabled());
     h = mixKey(h, gLang);
   } else if (cardOpen) {
-    for (uint32_t v : { (uint32_t)pet.speciesId, (uint32_t)pet.shiny, (uint32_t)pet.ageMinutes, (uint32_t)pet.streak,
-                        (uint32_t)pet.bestStreak, (uint32_t)pet.bond, (uint32_t)pet.medals, (uint32_t)pet.weight,
+    for (uint32_t v : { (uint32_t)pet.speciesId, (uint32_t)pet.shiny, (uint32_t)pet.ageMinutes, (uint32_t)pet.dev.streak,
+                        (uint32_t)pet.dev.bestStreak, (uint32_t)pet.bond, (uint32_t)pet.medals, (uint32_t)pet.weight,
                         (uint32_t)pet.trAtk, (uint32_t)pet.trDef, (uint32_t)pet.trSpe, (uint32_t)pet.geneAtk,
                         (uint32_t)pet.geneDef, (uint32_t)pet.geneSpe, (uint32_t)pet.careMistakes,
                         (uint32_t)pet.fullness, (uint32_t)pet.joy, (uint32_t)pet.energy, (uint32_t)pet.hygiene,
-                        (uint32_t)pet.berryKnown, (uint32_t)pet.strHi, (uint32_t)gLang })
+                        (uint32_t)pet.berryKnown, (uint32_t)pet.dev.strHi, (uint32_t)gLang })
       h = mixKey(h, v);
     for (const char *c = pet.nick; *c; c++) h = mixKey(h, (uint8_t)*c);
   }
@@ -1376,7 +1389,7 @@ void stepGame() {
   }
   if (ballY > 384) {  // al suelo
     if (++gameMisses >= 3) {
-      gameNewHi = (gameScore > pet.gameHi);
+      gameNewHi = (gameScore > pet.dev.gameHi);
       pet.playResult(gameScore);  // actualiza el record y da felicidad
       sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
       gameOverUntil = millis() + 4000;
@@ -1439,7 +1452,7 @@ void renderSack() {
       printT(T(S_NEW_RECORD));
     } else {
       char r[18];
-      snprintf(r, sizeof(r), T(S_RECORD_FMT), pet.strHi);
+      snprintf(r, sizeof(r), T(S_RECORD_FMT), pet.dev.strHi);
       gfx->setTextColor(ink);
       setCur(centerX(r, 2), 256);
       printT(r);
@@ -1450,7 +1463,7 @@ void renderSack() {
 
   // se acabaron los 10 s: aplicar entrenamiento
   if (!timeLeft(sackUntil)) {
-    sackNewHi = (sackHits > pet.strHi);
+    sackNewHi = (sackHits > pet.dev.strHi);
     sackGain = pet.trainStrength(sackHits);
     sfxPlay(sackNewHi ? SFX_MEDAL : SFX_PLAY);
     sackOverUntil = now + 3500;
@@ -1536,7 +1549,7 @@ void renderGame() {
       printT(T(S_NEW_RECORD));
     } else {
       char rec[20];
-      snprintf(rec, sizeof(rec), T(S_RECORD_FMT), pet.gameHi);
+      snprintf(rec, sizeof(rec), T(S_RECORD_FMT), pet.dev.gameHi);
       gfx->setTextColor(ink);
       setCur(centerX(rec, 2), 214);
       printT(rec);
@@ -1563,7 +1576,7 @@ void renderGame() {
   // record se quedaba en su primer digito ("きろく 2" con 219). Las tallas de
   // los buffers de texto las vigila TestBuffersDeTexto en test/test_tools.py.
   char rec[24];
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.gameHi);
+  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.dev.gameHi);
   setSize(2);
   setCur(centerX(rec, 2), 76);
   printT(rec);
@@ -1645,17 +1658,17 @@ void drawCardStat(int y, const char *label, uint16_t val, uint16_t maxBar, uint1
 // no hay que gestionar zona horaria. Preserva el dia (no rompe racha/edad).
 
 void openClock() {
-  uint32_t e = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
+  uint32_t e = pet.dev.lastSeenEpoch ? pet.dev.lastSeenEpoch : rtcEpoch();
   clockH = (e / 3600) % 24;
   clockM = (e / 60) % 60;
   clockOpen = true;
 }
 
 void applyClock() {
-  uint32_t base = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
+  uint32_t base = pet.dev.lastSeenEpoch ? pet.dev.lastSeenEpoch : rtcEpoch();
   uint32_t e = (base / 86400) * 86400 + (uint32_t)clockH * 3600 + (uint32_t)clockM * 60;
   rtcSetEpoch(e);
-  pet.setClock(e);
+  party.setClock(e);
   clockOpen = false;
 }
 
@@ -1766,12 +1779,12 @@ void clockTap(int16_t x, int16_t y) {
 
 // llama + numero de racha arriba a la izquierda
 void drawStreakBadge() {
-  if (pet.streak < 1) return;
+  if (pet.dev.streak < 1) return;
   int x = 26, y = 16;
   gfx->fillTriangle(x + 8, y, x + 1, y + 17, x + 15, y + 17, UI_BAR_BAD);
   gfx->fillTriangle(x + 8, y + 7, x + 4, y + 17, x + 12, y + 17, UI_BAR_WARN);
   char s[6];
-  snprintf(s, sizeof(s), "%u", pet.streak);
+  snprintf(s, sizeof(s), "%u", pet.dev.streak);
   gfx->setTextColor(inkColor());
   setSize(2);
   setCur(x + 22, y + 2);
@@ -1789,7 +1802,7 @@ void drawCelebration() {
       if (pet.newMedal & (1 << i)) { l2 = medalName(i); break; }
     l1 = T(S_MEDAL_BANNER);
   } else if (pet.showMilestone()) {
-    snprintf(buf, sizeof(buf), T(S_STREAK_DAYS_FMT), pet.streak);
+    snprintf(buf, sizeof(buf), T(S_STREAK_DAYS_FMT), pet.dev.streak);
     l1 = T(S_GREAT);
     l2 = buf;
   }
@@ -1852,7 +1865,7 @@ void renderCardProfile() {
   gfx->fillTriangle(sx + 8, sy, sx + 1, sy + 18, sx + 15, sy + 18, UI_BAR_BAD);
   gfx->fillTriangle(sx + 8, sy + 7, sx + 4, sy + 18, sx + 12, sy + 18, UI_BAR_WARN);
   char rl[40];  // en japones pierde cifras con 30 a partir de 100 dias
-  snprintf(rl, sizeof(rl), T(S_STREAK_FMT), pet.streak, pet.bestStreak);
+  snprintf(rl, sizeof(rl), T(S_STREAK_FMT), pet.dev.streak, pet.dev.bestStreak);
   gfx->setTextColor(UI_INK);
   setSize(2);
   setCur(sx + 24, sy + 2);
