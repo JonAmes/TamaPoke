@@ -10,6 +10,15 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **Party model (F34).** The device now keeps up to 4 companions
+  (`PARTY_MAX`). One is *active* — full care loop, XP, steps, minigames — the
+  others wait in reserve: they age at the same rate but decay 4x slower with a
+  care floor (40/100), never poop, never neglect-count, never run away and
+  eggs never hatch in reserve. Save format moved to per-slot keys; old
+  single-pet saves migrate to slot 0 for free (updating without "Erase device"
+  keeps your Pokémon). Serial console gained `PARTY` (list slots) and
+  `FOCUS n` (switch active); the HUD avatar row comes with the UI pass.
+
 - **Guition / Sunton ESP32-S3-4848S040** (4.0" IPS 480×480, ST7701S RGB panel
   + GT911 touch) is now a supported build target: build with
   `-DBOARD_GUITION_4848S040`. Pins and per-board capabilities live in the new

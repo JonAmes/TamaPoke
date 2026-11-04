@@ -22,7 +22,7 @@ void Pet::newEgg() {
   eggTarget = pickEggSpecies();  // especie oculta segun rareza y pokedex
   starterPick = (registeredCount() == 0);  // primera partida: el jugador elige inicial
   // sorteo shiny: 1/48 base, mejor con despedida y con racha/vinculo altos
-  int shinyBase = (lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
+  int shinyBase = (dev.lastEnd == CER_FAREWELL ? 24 : 48) - careBonus();
   if (shinyBase < 8) shinyBase = 8;
   eggShiny = (random(shinyBase) == 0);
   eggTaps = 0;
@@ -47,13 +47,13 @@ static uint8_t dropTo(uint8_t v, uint8_t d, uint8_t fl) {
 }
 
 void Pet::setClock(uint32_t nowEpoch) {
-  lastSeenEpoch = nowEpoch;
+  dev.lastSeenEpoch = nowEpoch;
   if (nowEpoch) save();  // persiste ya: un corte de luz no pierde la referencia
 }
 
 void Pet::syncClock(uint32_t nowEpoch) {
   uint32_t seen = prefs.getUInt("seen", 0);
-  lastSeenEpoch = nowEpoch;
+  dev.lastSeenEpoch = nowEpoch;
   if (nowEpoch == 0) return;
   uint32_t mins = (seen && nowEpoch > seen) ? (nowEpoch - seen) / 60 : 0;
   if (mins < 2 || ceremony != CER_NONE || starterPick) {
@@ -225,8 +225,8 @@ int16_t Pet::pickEggSpecies() {
   }
 
   uint8_t tier = R_COMUN;
-  if (lastEnd != CER_RUNAWAY) {
-    bool blessed = (lastEnd == CER_FAREWELL);
+  if (dev.lastEnd != CER_RUNAWAY) {
+    bool blessed = (dev.lastEnd == CER_FAREWELL);
     int rare = (blessed ? 45 : 27) + careBonus();
     int leg = (registeredCount() >= 25) ? (blessed ? 10 : 3) + careBonus() / 3 : 0;
     int r = random(100);
@@ -253,13 +253,13 @@ int16_t Pet::pickEggSpecies() {
 
 void Pet::registerSpecies(int16_t dex) {
   if (dex < 1 || dex > 151) return;
-  dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
-  if (shiny) dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+  dev.dexReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
+  if (shiny) dev.dexShinyReg[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
 }
 
 // la racha y el vinculo mejoran el sorteo del huevo (0..~14)
 int Pet::careBonus() const {
-  int s = streak > 30 ? 30 : streak;
+  int s = dev.streak > 30 ? 30 : dev.streak;
   return s / 3 + bond / 25;
 }
 
@@ -267,21 +267,21 @@ int Pet::careBonus() const {
 void Pet::registerCare() {
   if (isEgg() || ceremony != CER_NONE) return;
   uint32_t d = today();
-  if (d == 0 || d == lastCareDay) return;  // sin reloj, o ya conto hoy
-  if (lastCareDay == 0 || d == lastCareDay + 1) {
-    streak++;
+  if (d == 0 || d == dev.lastCareDay) return;  // sin reloj, o ya conto hoy
+  if (dev.lastCareDay == 0 || d == dev.lastCareDay + 1) {
+    dev.streak++;
   } else {
-    streak = 1;        // hubo un hueco de dias
-    lastMilestone = 0;
+    dev.streak = 1;        // hubo un hueco de dias
+    dev.lastMilestone = 0;
   }
-  lastCareDay = d;
+  dev.lastCareDay = d;
   bondToday = 0;
-  if (streak > bestStreak) bestStreak = streak;
+  if (dev.streak > dev.bestStreak) dev.bestStreak = dev.streak;
   bond = clamp100(bond + 4);
-  uint16_t ms = (streak >= 100) ? 100 : (streak >= 30) ? 30
-              : (streak >= 7)   ? 7   : (streak >= 3)  ? 3 : 0;
-  if (ms > lastMilestone) {
-    lastMilestone = ms;
+  uint16_t ms = (dev.streak >= 100) ? 100 : (dev.streak >= 30) ? 30
+              : (dev.streak >= 7)   ? 7   : (dev.streak >= 3)  ? 3 : 0;
+  if (ms > dev.lastMilestone) {
+    dev.lastMilestone = ms;
     milestoneUntil = millis() + 4500;
   }
   checkMedals();
@@ -301,13 +301,13 @@ void Pet::checkMedals() {
   if (level() >= 25) medals |= MED_LV25;
   if (level() >= 50) medals |= MED_LV50;
   if (berryKnown) medals |= MED_BERRY;
-  if (streak >= 7) medals |= MED_STREAK7;
+  if (dev.streak >= 7) medals |= MED_STREAK7;
   if (bond >= 100) medals |= MED_BOND;
   if (DEX_TBL[speciesId].evolvesTo == 0) medals |= MED_FINAL;
   if (weight == 0 && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
   uint16_t gained = medals & ~before;
   if (gained) {
-    for (uint16_t m = gained; m; m &= (m - 1)) totalMedals++;
+    for (uint16_t m = gained; m; m &= (m - 1)) dev.totalMedals++;
     newMedal = gained;
     medalUntil = millis() + 4000;
     if (!sleeping) sfxPlay(SFX_MEDAL);
@@ -357,7 +357,7 @@ bool Pet::canRunawayNow() const {
 
 void Pet::startFarewell() {
   if (isEgg() || ceremony != CER_NONE) return;
-  lastEnd = CER_FAREWELL;
+  dev.lastEnd = CER_FAREWELL;
   ceremony = CER_FAREWELL;
   ceremonyUntil = millis() + CEREMONY_MS;
   heartUntil = ceremonyUntil;  // corazones durante toda la despedida
@@ -367,7 +367,7 @@ void Pet::startFarewell() {
 
 void Pet::startRunaway() {
   if (isEgg() || ceremony != CER_NONE) return;
-  lastEnd = CER_RUNAWAY;
+  dev.lastEnd = CER_RUNAWAY;
   ceremony = CER_RUNAWAY;
   ceremonyUntil = millis() + CEREMONY_MS;
   sfxPlay(SFX_BYE);
@@ -376,7 +376,7 @@ void Pet::startRunaway() {
 
 void Pet::release() {
   if (isEgg() || ceremony != CER_NONE) return;
-  lastEnd = CER_RELEASE;
+  dev.lastEnd = CER_RELEASE;
   ceremony = CER_RELEASE;
   ceremonyUntil = millis() + CEREMONY_MS;
   heartUntil = ceremonyUntil;
@@ -477,7 +477,7 @@ void Pet::playResult(uint8_t score) {
   int burn = (int)weight - score * 2;  // el ejercicio quema peso
   weight = burn > 0 ? burn : 0;
   if (score >= 5) heartUntil = millis() + HEART_MS;
-  if (score > gameHi) gameHi = score;  // nuevo record
+  if (score > dev.gameHi) dev.gameHi = score;  // nuevo record
   addBond(2);
   registerCare();
   save();
@@ -499,7 +499,7 @@ uint8_t Pet::trainStrength(uint16_t hits) {
   weight = burn > 0 ? burn : 0;
   joy = clamp100(joy + 6);
   if (hits >= 20) heartUntil = millis() + HEART_MS;
-  if (hits > strHi) strHi = hits;   // record de golpes
+  if (hits > dev.strHi) dev.strHi = hits;   // record de golpes
   addBond(2);
   registerCare();
   save();
@@ -556,97 +556,351 @@ PetMood Pet::mood() const {
   return MOOD_HAPPY;
 }
 
+// --- guardado por slots (F34) ---
+// clave con prefijo de slot: el slot 0 usa la clave sin prefijo, asi los
+// guardados de mascota unica son literalmente el slot 0 (migracion gratis)
+static const char *slotKey(char (&buf)[16], int slot, const char *base) {
+  if (slot <= 0) return base;
+  snprintf(buf, sizeof(buf), "s%d.%s", slot, base);
+  return buf;
+}
+
+// el registro completo de un slot viaja en bloque: el activo lo escribe
+// Pet::save() y las reservas Party::saveAll() con el mismo par de funciones
+static void wrRec(Preferences &p, int slot, const PetRecord &r) {
+  char b[16];
+  p.putBool(slotKey(b, slot, "used"), r.used);
+  p.putUChar(slotKey(b, slot, "full"), r.fullness);
+  p.putUChar(slotKey(b, slot, "joy"), r.joy);
+  p.putUChar(slotKey(b, slot, "ene"), r.energy);
+  p.putUChar(slotKey(b, slot, "hyg"), r.hygiene);
+  p.putUChar(slotKey(b, slot, "poop"), r.poops);
+  p.putUChar(slotKey(b, slot, "wgt"), r.weight);
+  p.putUChar(slotKey(b, slot, "gatk"), r.geneAtk);
+  p.putUChar(slotKey(b, slot, "gdef"), r.geneDef);
+  p.putUChar(slotKey(b, slot, "gspe"), r.geneSpe);
+  p.putUChar(slotKey(b, slot, "tatk"), r.trAtk);
+  p.putUChar(slotKey(b, slot, "tdef"), r.trDef);
+  p.putUChar(slotKey(b, slot, "tspe"), r.trSpe);
+  p.putBool(slotKey(b, slot, "bk"), r.berryKnown);
+  p.putBool(slotKey(b, slot, "shy"), r.shiny);
+  p.putBool(slotKey(b, slot, "eshy"), r.eggShiny);
+  p.putBool(slotKey(b, slot, "stpk"), r.starterPick);
+  p.putUInt(slotKey(b, slot, "age"), r.ageMinutes);
+  p.putShort(slotKey(b, slot, "dexn"), r.speciesId);
+  p.putShort(slotKey(b, slot, "eggT2"), r.eggTarget);
+  p.putUChar(slotKey(b, slot, "crack"), r.eggTaps);
+  p.putUChar(slotKey(b, slot, "mist"), r.careMistakes);
+  p.putBool(slotKey(b, slot, "sleep"), r.sleeping);
+  p.putUChar(slotKey(b, slot, "bond"), r.bond);
+  p.putUShort(slotKey(b, slot, "medal"), r.medals);
+  p.putString(slotKey(b, slot, "nick"), r.nick);
+}
+
+static void rdRec(Preferences &p, int slot, PetRecord &r) {
+  char b[16];
+  r.used = p.getBool(slotKey(b, slot, "used"), false);
+  r.fullness = p.getUChar(slotKey(b, slot, "full"), 80);
+  r.joy = p.getUChar(slotKey(b, slot, "joy"), 80);
+  r.energy = p.getUChar(slotKey(b, slot, "ene"), 80);
+  r.hygiene = p.getUChar(slotKey(b, slot, "hyg"), 100);
+  r.poops = p.getUChar(slotKey(b, slot, "poop"), 0);
+  r.weight = p.getUChar(slotKey(b, slot, "wgt"), 0);
+  r.geneAtk = p.getUChar(slotKey(b, slot, "gatk"), 0);
+  r.geneDef = p.getUChar(slotKey(b, slot, "gdef"), 0);
+  r.geneSpe = p.getUChar(slotKey(b, slot, "gspe"), 0);
+  r.trAtk = p.getUChar(slotKey(b, slot, "tatk"), 0);
+  r.trDef = p.getUChar(slotKey(b, slot, "tdef"), 0);
+  r.trSpe = p.getUChar(slotKey(b, slot, "tspe"), 0);
+  r.berryKnown = p.getBool(slotKey(b, slot, "bk"), false);
+  r.shiny = p.getBool(slotKey(b, slot, "shy"), false);
+  r.eggShiny = p.getBool(slotKey(b, slot, "eshy"), false);
+  r.starterPick = p.getBool(slotKey(b, slot, "stpk"), false);
+  r.ageMinutes = p.getUInt(slotKey(b, slot, "age"), 0);
+  if (p.isKey(slotKey(b, slot, "dexn"))) {
+    r.speciesId = p.getShort(slotKey(b, slot, "dexn"), -1);
+    r.eggTarget = p.getShort(slotKey(b, slot, "eggT2"), 4);
+  } else {
+    // migracion desde la version con indices de flash (0-8): solo claves sin
+    // prefijo, o sea el slot 0
+    static const uint8_t OLD2DEX[9] = { 4, 5, 6, 1, 2, 3, 7, 8, 9 };
+    int8_t old = p.getChar("spec", -1);
+    r.speciesId = (old >= 0 && old < 9) ? OLD2DEX[old] : -1;
+    int8_t oldT = p.getChar("eggT", 0);
+    r.eggTarget = (oldT >= 0 && oldT < 9) ? OLD2DEX[oldT] : 4;
+  }
+  r.eggTaps = p.getUChar(slotKey(b, slot, "crack"), 0);
+  r.careMistakes = p.getUChar(slotKey(b, slot, "mist"), 0);
+  r.sleeping = p.getBool(slotKey(b, slot, "sleep"), false);
+  r.bond = p.getUChar(slotKey(b, slot, "bond"), 0);
+  r.medals = p.getUShort(slotKey(b, slot, "medal"), 0);
+  p.getString(slotKey(b, slot, "nick"), r.nick, sizeof(r.nick));
+}
+
 void Pet::save() {
   ticksSinceSave = 0;
   pendingSave = false;
-  prefs.putUChar("full", fullness);
-  prefs.putUChar("joy", joy);
-  prefs.putUChar("ene", energy);
-  prefs.putUChar("hyg", hygiene);
-  prefs.putUChar("poop", poops);
-  prefs.putUChar("wgt", weight);
-  prefs.putUChar("gatk", geneAtk);
-  prefs.putUChar("gdef", geneDef);
-  prefs.putUChar("gspe", geneSpe);
-  prefs.putUChar("tatk", trAtk);
-  prefs.putUChar("tdef", trDef);
-  prefs.putUChar("tspe", trSpe);
-  prefs.putBool("bk", berryKnown);
-  prefs.putBool("shy", shiny);
-  prefs.putBool("eshy", eggShiny);
-  prefs.putBool("stpk", starterPick);
-  prefs.putBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
-  prefs.putUInt("age", ageMinutes);
-  prefs.putShort("dexn", speciesId);
-  prefs.putShort("eggT2", eggTarget);
-  prefs.putUChar("crack", eggTaps);
-  prefs.putUChar("mist", careMistakes);
-  prefs.putBool("sleep", sleeping);
-  prefs.putUChar("lend", lastEnd);
-  if (lastSeenEpoch) prefs.putUInt("seen", lastSeenEpoch);
-  prefs.putBytes("dexreg", dexReg, sizeof(dexReg));
-  prefs.putUShort("strk", streak);
-  prefs.putUShort("bstrk", bestStreak);
-  prefs.putUInt("cday", lastCareDay);
-  prefs.putUChar("bond", bond);
-  prefs.putUShort("medal", medals);
-  prefs.putUShort("tmedal", totalMedals);
-  prefs.putUShort("mstone", lastMilestone);
-  prefs.putUShort("ghi", gameHi);
-  prefs.putUShort("shi", strHi);
-  prefs.putString("nick", nick);
+  // estado del dispositivo: claves sin prefijo, comun a todo el party
+  prefs.putBytes("dexreg", dev.dexReg, sizeof(dev.dexReg));
+  prefs.putBytes("dexsh", dev.dexShinyReg, sizeof(dev.dexShinyReg));
+  prefs.putUShort("strk", dev.streak);
+  prefs.putUShort("bstrk", dev.bestStreak);
+  prefs.putUInt("cday", dev.lastCareDay);
+  prefs.putUChar("lend", dev.lastEnd);
+  prefs.putUShort("tmedal", dev.totalMedals);
+  prefs.putUShort("mstone", dev.lastMilestone);
+  prefs.putUShort("ghi", dev.gameHi);
+  prefs.putUShort("shi", dev.strHi);
+  if (dev.lastSeenEpoch) prefs.putUInt("seen", dev.lastSeenEpoch);
+  // registro del slot enfocado
+  PetRecord r;
+  toRecord(r);
+  wrRec(prefs, slot, r);
 }
 
 void Pet::load() {
-  fullness = prefs.getUChar("full", 80);
-  joy = prefs.getUChar("joy", 80);
-  energy = prefs.getUChar("ene", 80);
-  hygiene = prefs.getUChar("hyg", 100);
-  poops = prefs.getUChar("poop", 0);
-  weight = prefs.getUChar("wgt", 0);
-  geneAtk = prefs.getUChar("gatk", 0);
-  geneDef = prefs.getUChar("gdef", 0);
-  geneSpe = prefs.getUChar("gspe", 0);
-  if (geneAtk == 0) {  // mascota anterior a los genes: tirada unica ahora
-    geneAtk = 90 + random(21);
-    geneDef = 90 + random(21);
-    geneSpe = 90 + random(21);
+  prefs.getBytes("dexreg", dev.dexReg, sizeof(dev.dexReg));
+  prefs.getBytes("dexsh", dev.dexShinyReg, sizeof(dev.dexShinyReg));
+  dev.streak = prefs.getUShort("strk", 0);
+  dev.bestStreak = prefs.getUShort("bstrk", 0);
+  dev.lastCareDay = prefs.getUInt("cday", 0);
+  dev.lastEnd = prefs.getUChar("lend", CER_NONE);
+  dev.totalMedals = prefs.getUShort("tmedal", 0);
+  dev.lastMilestone = prefs.getUShort("mstone", 0);
+  dev.gameHi = prefs.getUShort("ghi", 0);
+  dev.strHi = prefs.getUShort("shi", 0);
+  dev.lastSeenEpoch = prefs.getUInt("seen", 0);
+  PetRecord r;
+  rdRec(prefs, slot, r);
+  if (r.geneAtk == 0) {  // mascota anterior a los genes: tirada unica ahora
+    r.geneAtk = 90 + random(21);
+    r.geneDef = 90 + random(21);
+    r.geneSpe = 90 + random(21);
   }
-  trAtk = prefs.getUChar("tatk", 0);
-  trDef = prefs.getUChar("tdef", 0);
-  trSpe = prefs.getUChar("tspe", 0);
-  berryKnown = prefs.getBool("bk", false);
-  shiny = prefs.getBool("shy", false);
-  eggShiny = prefs.getBool("eshy", false);
-  starterPick = prefs.getBool("stpk", false);
-  prefs.getBytes("dexsh", dexShinyReg, sizeof(dexShinyReg));
-  ageMinutes = prefs.getUInt("age", 0);
-  if (prefs.isKey("dexn")) {
-    speciesId = prefs.getShort("dexn", -1);
-    eggTarget = prefs.getShort("eggT2", 4);
-  } else {
-    // migracion desde la version con indices de flash (0-8)
-    static const uint8_t OLD2DEX[9] = { 4, 5, 6, 1, 2, 3, 7, 8, 9 };
-    int8_t old = prefs.getChar("spec", -1);
-    speciesId = (old >= 0 && old < 9) ? OLD2DEX[old] : -1;
-    int8_t oldT = prefs.getChar("eggT", 0);
-    eggTarget = (oldT >= 0 && oldT < 9) ? OLD2DEX[oldT] : 4;
-  }
-  eggTaps = prefs.getUChar("crack", 0);
-  careMistakes = prefs.getUChar("mist", 0);
-  sleeping = prefs.getBool("sleep", false);
-  lastEnd = prefs.getUChar("lend", CER_NONE);
-  prefs.getBytes("dexreg", dexReg, sizeof(dexReg));
-  streak = prefs.getUShort("strk", 0);
-  bestStreak = prefs.getUShort("bstrk", 0);
-  lastCareDay = prefs.getUInt("cday", 0);
-  bond = prefs.getUChar("bond", 0);
-  medals = prefs.getUShort("medal", 0);
-  totalMedals = prefs.getUShort("tmedal", 0);
-  lastMilestone = prefs.getUShort("mstone", 0);
-  gameHi = prefs.getUShort("ghi", 0);
-  strHi = prefs.getUShort("shi", 0);
-  prefs.getString("nick", nick, sizeof(nick));
+  fromRecord(r);
   // siembra: la mascota actual cuenta como criada (guardados antiguos)
   if (speciesId >= 1) registerSpecies(speciesId);
 }
+
+// --- party (F34) ---
+
+void Pet::toRecord(PetRecord &r) const {
+  r.used = true;
+  r.fullness = fullness;
+  r.joy = joy;
+  r.energy = energy;
+  r.hygiene = hygiene;
+  r.poops = poops;
+  r.weight = weight;
+  r.geneAtk = geneAtk;
+  r.geneDef = geneDef;
+  r.geneSpe = geneSpe;
+  r.trAtk = trAtk;
+  r.trDef = trDef;
+  r.trSpe = trSpe;
+  r.berryKnown = berryKnown;
+  r.shiny = shiny;
+  r.eggTarget = eggTarget;
+  r.eggShiny = eggShiny;
+  r.eggTaps = eggTaps;
+  r.starterPick = starterPick;
+  r.ageMinutes = ageMinutes;
+  r.speciesId = speciesId;
+  r.careMistakes = careMistakes;
+  r.sleeping = sleeping;
+  r.bond = bond;
+  r.medals = medals;
+  strncpy(r.nick, nick, sizeof(r.nick) - 1);
+  r.nick[sizeof(r.nick) - 1] = 0;
+}
+
+void Pet::fromRecord(const PetRecord &r) {
+  fullness = r.fullness;
+  joy = r.joy;
+  energy = r.energy;
+  hygiene = r.hygiene;
+  poops = r.poops;
+  weight = r.weight;
+  geneAtk = r.geneAtk;
+  geneDef = r.geneDef;
+  geneSpe = r.geneSpe;
+  trAtk = r.trAtk;
+  trDef = r.trDef;
+  trSpe = r.trSpe;
+  berryKnown = r.berryKnown;
+  shiny = r.shiny;
+  eggTarget = r.eggTarget;
+  eggShiny = r.eggShiny;
+  eggTaps = r.eggTaps;
+  starterPick = r.starterPick;
+  ageMinutes = r.ageMinutes;
+  speciesId = r.speciesId;
+  careMistakes = r.careMistakes;
+  sleeping = r.sleeping;
+  bond = r.bond;
+  medals = r.medals;
+  strncpy(nick, r.nick, sizeof(nick) - 1);
+  nick[sizeof(nick) - 1] = 0;
+  // transitorios: al cambiar de foco no se arrastra nada visual ni temporales
+  prevSpeciesId = -1;
+  ceremony = CER_NONE;
+  ceremonyUntil = eatUntil = heartUntil = evolveUntil = 0;
+  medalUntil = milestoneUntil = 0;
+  newMedal = 0;
+  neglectTicks = mistakeCooldown = goodTicks = bondToday = 0;
+  evoDeclinedLv = 0;
+  farDeclinedAge = 0;
+  ticksSinceSave = 0;
+  pendingSave = false;
+  lastTick = millis();
+}
+
+// envejecimiento de reserva: same clock, slower care. Un companiero no
+// enfocado envejece su edad, pero decae 4x mas lento, con suelo
+// RESERVE_FLOOR, sin cacas, sin descuidos, sin escaparse y sin eclosionar:
+// al recuperarlo siempre queda algo de mimo que hacer, y los pasos/XP siguen
+// siendo solo del activo
+void Pet::applyIdleMinutes(PetRecord &r, uint32_t mins) {
+  if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // mismo tope que offline
+  for (uint32_t i = 0; i < mins; i++) {
+    r.ageMinutes++;
+    if (r.speciesId < 0) continue;  // huevo: solo envejece, no eclosiona en reserva
+    if (i % 4 == 0) {
+      r.fullness = dropTo(r.fullness, 1, RESERVE_FLOOR);
+      r.joy = dropTo(r.joy, 1, RESERVE_FLOOR);
+      r.energy = dropTo(r.energy, 1, RESERVE_FLOOR);
+    }
+    if (i % 8 == 0) r.hygiene = dropTo(r.hygiene, 1, RESERVE_FLOOR);
+    if (i % 3 == 0 && r.weight > 0) r.weight--;
+  }
+}
+
+void Party::begin() {
+  pet.prefs.begin("tamapoke", false);
+  // 0xFF = sin meta de party: guardado de la epoca de mascota unica
+  uint8_t pact = pet.prefs.getUChar("pact", 0xFF);
+  if (!pet.prefs.getBool("init", false)) {
+    pet.prefs.putBool("init", true);
+    pet.slot = 0;
+    pet.newEgg();  // guarda solo (slot 0)
+  } else if (pact != 0xFF) {
+    uint8_t mask = pet.prefs.getUChar("pmask", 1);
+    if (pact >= PARTY_MAX || !(mask & (1u << pact))) pact = 0;
+    for (int i = 0; i < PARTY_MAX; i++) {
+      slots[i].used = (mask >> i) & 1;
+      if (!slots[i].used) continue;
+      if (i == (int)pact) {
+        pet.slot = (int8_t)i;
+        pet.load();
+      } else {
+        rdRec(pet.prefs, i, slots[i]);
+      }
+    }
+    if (!slots[pact].used) {  // meta corrupta: slot activo sin registro
+      slots[pact].used = true;
+      pet.slot = (int8_t)pact;
+      pet.newEgg();
+    }
+  } else {
+    // guardado antiguo de mascota unica: es literalmente el slot 0
+    // (mismas claves sin prefijo), la migracion no toca nada
+    pet.slot = 0;
+    pet.load();
+    slots[0].used = true;
+  }
+  syncSlotsFromPet();
+  saveAll();
+  pet.lastTick = millis();
+  lastAge = pet.ageMinutes;
+}
+
+void Party::syncSlotsFromPet() { pet.toRecord(slots[pet.slot]); }
+
+void Party::saveAll() {
+  pet.save();  // activo (registro + dispositivo)
+  uint8_t mask = 0;
+  for (int i = 0; i < PARTY_MAX; i++) {
+    if (!slots[i].used) continue;
+    mask |= (1u << i);
+    if (i != (int)pet.slot) wrRec(pet.prefs, i, slots[i]);
+  }
+  pet.prefs.putUChar("pmask", mask);
+  pet.prefs.putUChar("pact", (uint8_t)pet.slot);
+}
+
+bool Party::focus(int i) {
+  if (!canFocus(i)) return false;
+  pet.toRecord(slots[pet.slot]);  // exportar antes de cambiar de slot
+  PetRecord r = slots[i];
+  pet.slot = (int8_t)i;
+  pet.fromRecord(r);
+  saveAll();
+  lastAge = pet.ageMinutes;
+  return true;
+}
+
+int Party::firstFree() const {
+  for (int i = 0; i < PARTY_MAX; i++)
+    if (!slots[i].used) return i;
+  return -1;
+}
+
+int Party::filled() const {
+  int n = 0;
+  for (int i = 0; i < PARTY_MAX; i++)
+    if (slots[i].used) n++;
+  return n;
+}
+
+bool Party::add(const PetRecord &rec) {
+  int i = firstFree();
+  if (i < 0) return false;  // party lleno: rechazo limpio, sin sobrescribir
+  slots[i] = rec;
+  slots[i].used = true;
+  saveAll();
+  return true;
+}
+
+bool Party::removeSlot(int i) {
+  if (!slotUsed(i) || i == (int)pet.slot) return false;
+  slots[i].used = false;
+  saveAll();
+  return true;
+}
+
+void Party::update(uint32_t nowMs) {
+  // bomba de minutos: lo que envejece el activo es lo que envejecen LENTO
+  // las reservas (en una ceremonia el activo no envejece: las reservas
+  // tampoco, coherente con el tiempo congelado)
+  uint32_t before = pet.ageMinutes;
+  pet.update(nowMs);
+  uint32_t gained = (pet.ageMinutes >= before) ? pet.ageMinutes - before : 0;
+  if (gained > 0 && gained < 100000) {  // ageMinutes reset = huevo nuevo
+    for (int i = 0; i < PARTY_MAX; i++)
+      if (i != (int)pet.slot && slots[i].used) Pet::applyIdleMinutes(slots[i], gained);
+  }
+  lastAge = pet.ageMinutes;
+}
+
+void Party::flushSave() {
+  if (!pet.savePending()) return;
+  syncSlotsFromPet();
+  saveAll();  // save() del activo limpia el pendientey se escriben reservas+meta
+}
+
+void Party::setClock(uint32_t nowEpoch) { pet.setClock(nowEpoch); }
+
+void Party::syncClock(uint32_t nowEpoch) {
+  uint32_t seen = pet.savedEpoch();
+  uint32_t mins = (seen && nowEpoch > seen) ? (nowEpoch - seen) / 60 : 0;
+  if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;
+  pet.syncClock(nowEpoch);
+  // las reservas solo envejecen lento si al activo le aplica la progresion
+  if (mins >= 2 && seen && nowEpoch && pet.ceremony == CER_NONE && !pet.starterPick) {
+    for (int i = 0; i < PARTY_MAX; i++)
+      if (i != (int)pet.slot && slots[i].used) Pet::applyIdleMinutes(slots[i], mins);
+  }
+  syncSlotsFromPet();
+  saveAll();  // el offline toca el reloj de todas las reservas: volcar ya
+}
+

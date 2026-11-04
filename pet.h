@@ -14,6 +14,13 @@
 #define CEREMONY_MS 10000UL                // duracion de la despedida en pantalla
 #define FAREWELL_AGE_MIN (3UL * 24 * 60)   // se despide a los 3 dias de juego (en forma final)
 #define RUNAWAY_TICKS 60                   // se escapa tras 1 h con TODO a cero
+// companeros conviviendo en un dispositivo (F34). Con PARTY_MAX=1 el bucle
+// monomascota de siempre queda identico: no hay reservas que envejecer.
+#define PARTY_MAX 4
+// suelo de las reservas: un companero en reserva nunca pasa hambre extrema
+// (decae lento y se detiene aqui; el ciclo de cuidados completo solo aplica
+// al companiero activo)
+#define RESERVE_FLOOR 40
 
 // milisegundos que faltan hasta `deadline` (0 si ya paso, o si deadline==0:
 // "temporizador inactivo"). Todos los temporizadores del juego (dialogos,
@@ -42,6 +49,47 @@ enum : uint16_t {
 };
 #define MED_COUNT 8
 
+// Estado del DISPOSITIVO (no del individuo): lo que sobrevive a cualquier
+// crianza y es comun a todos los companeros. La pokedex es la union sobre
+// todos los companeros: recibir una mascota suma su especie aunque otra ya
+// la tenga.
+struct DevState {
+  uint8_t dexReg[19] = { 0 };       // pokedex de criados (bitmap 151 bits)
+  uint8_t dexShinyReg[19] = { 0 };  // criados en version shiny
+  // racha de cuidado diario (del jugador: persiste entre crianzas)
+  uint16_t streak = 0, bestStreak = 0;
+  uint32_t lastCareDay = 0;
+  uint8_t lastEnd = CER_NONE;  // como acabo la anterior (afecta al huevo)
+  uint16_t totalMedals = 0;    // contador acumulado entre todas las crianzas
+  uint16_t lastMilestone = 0;  // hito de racha ya celebrado
+  uint16_t gameHi = 0;         // record del minijuego (del jugador)
+  uint16_t strHi = 0;          // record de golpes al saco
+  uint32_t lastSeenEpoch = 0;  // ultima hora RTC vista (progresion offline)
+};
+
+// Estado COMPLETO de un companero. Es el snapshot persistido por slot y,
+// mas adelante, el payload de transferencia entre dispositivos (§5d):
+// ~100 B, cabe en un MTU de BLE.
+struct PetRecord {
+  bool used = false;  // slot ocupado
+  uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
+  uint8_t poops = 0, weight = 0;
+  uint8_t geneAtk = 100, geneDef = 100, geneSpe = 100;
+  uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  bool berryKnown = false, shiny = false;
+  uint32_t ageMinutes = 0;
+  int16_t speciesId = -1;  // numero de Pokedex (1-151), -1 = huevo
+  uint8_t careMistakes = 0;
+  bool sleeping = false;
+  int16_t eggTarget = 1;  // dex oculto que saldra del huevo
+  bool eggShiny = false;
+  uint8_t eggTaps = 0;
+  bool starterPick = false;  // esperando eleccion de inicial
+  uint8_t bond = 0;          // vinculo (del bicho, no del jugador)
+  uint16_t medals = 0;       // medallas del individuo
+  char nick[12] = "";        // apodo (vacio = nombre de especie)
+};
+
 class Pet {
 public:
   // Estadisticas 0..100
@@ -58,26 +106,21 @@ public:
   bool shiny = false;       // variante de color rara (se sortea en el huevo)
   uint32_t ageMinutes = 0;
   int16_t speciesId = -1;      // numero de Pokedex (1-151), -1 = huevo
-  int16_t prevSpeciesId = -1;  // para la animacion de evolucion
+  int16_t prevSpeciesId = -1;  // para la animacion de evolucion (no se persiste)
   uint8_t careMistakes = 0;   // descuidos: cada uno retrasa la evolucion 1 nivel
   bool sleeping = false;
-  uint32_t lastSeenEpoch = 0;   // ultima hora RTC vista (para progresion offline)
   uint8_t ceremony = CER_NONE;  // despedida/escapada/liberacion en curso
-  uint8_t lastEnd = CER_NONE;   // como acabo la anterior (afecta al huevo)
-  uint8_t dexReg[19] = { 0 };       // pokedex de criados (bitmap 151 bits)
-  uint8_t dexShinyReg[19] = { 0 };  // criados en version shiny
-  // racha de cuidado diario (del jugador: persiste entre crianzas)
-  uint16_t streak = 0, bestStreak = 0;
-  uint32_t lastCareDay = 0;
-  // vinculo (del bicho: sube lento con cuidado, se resetea al nacer otro)
+  // racha / vinculo / medallas / nombre
   uint8_t bond = 0;
-  char nick[12] = "";    // apodo (vacio = nombre de especie)
-  // medallas: del individuo + contador acumulado entre todas las crianzas
-  uint16_t medals = 0, totalMedals = 0;
+  char nick[12] = "";
+  uint16_t medals = 0;
   uint16_t newMedal = 0;   // recien conseguida(s), para celebrar
-  uint16_t lastMilestone = 0;  // hito de racha ya celebrado
-  uint16_t gameHi = 0;     // record del minijuego (del jugador)
-  uint16_t strHi = 0;      // record de golpes al saco
+  // estado del dispositivo (pokedex, rachas, records): comun a todos los
+  // companeros; quien lo vive en vivo es el companiero activo
+  DevState dev;
+  // slot que ocupa en el party (0 = el de los guardados antiguos, claves sin
+  // prefijo; slot>0 añade el prefijo "s<n>." a las claves del individuo)
+  int8_t slot = 0;
 
   void begin();                 // carga estado de NVS (o crea el primer huevo)
   void update(uint32_t nowMs);  // llamar en cada loop()
@@ -139,10 +182,10 @@ public:
     return lv > 999 ? 999 : (uint16_t)lv;
   }
   bool isRegistered(int16_t dex) const {
-    return dex >= 1 && dex <= 151 && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
+    return dex >= 1 && dex <= 151 && (dev.dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
   bool isShinyRegistered(int16_t dex) const {
-    return dex >= 1 && dex <= 151 && (dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
+    return dex >= 1 && dex <= 151 && (dev.dexShinyReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }
   uint16_t registeredCount() const;
   bool lineHasUnregistered(int16_t base) const;
@@ -156,9 +199,8 @@ public:
     return 1.0f - (float)timeLeft(ceremonyUntil) / (float)CEREMONY_MS;
   }
 
-  // racha / vinculo / medallas / nombre
-  void rename(const char *name);
   bool hasMedal(uint16_t m) const { return medals & m; }
+  void rename(const char *name);  // apodo del companiero (lo pone el jugador)
   bool showMedal() const { return timeLeft(medalUntil) > 0; }
   bool showMilestone() const { return timeLeft(milestoneUntil) > 0; }
   int careBonus() const;  // mejora del huevo por racha + vinculo
@@ -171,13 +213,24 @@ public:
   uint32_t savedEpoch() { return prefs.getUInt("seen", 0); }
   void flushSave();
 
+  // --- party (F34) ---
+  // volcar/restaurar el estado del individuo (lo que vive en un PetRecord).
+  // fromRecord ademas resetea las animaciones y temporizadores transitorios:
+  // al cambiar de foco no hay que arrastrar estados visuales del saliente.
+  void toRecord(PetRecord &r) const;
+  void fromRecord(const PetRecord &r);
+  // envejecimiento de reserva: un companiero no enfocado envejece su edad,
+  // pero sus stats decaen LENTO y con suelo RESERVE_FLOOR: sin descuidos,
+  // sin cacas, sin escapadas y sin eclosionar. Host-testeable.
+  static void applyIdleMinutes(PetRecord &r, uint32_t mins);
+
 private:
   Preferences prefs;
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;
   uint32_t heartUntil = 0;
   uint32_t evolveUntil = 0;
-  int16_t eggTarget = 1;       // dex oculto que saldra del huevo
+  int16_t eggTarget = 1;       // especie oculta que saldra del huevo
   bool eggShiny = false;       // sorpresa sorteada al crear el huevo
   uint8_t eggTaps = 0;
   uint8_t mistakeCooldown = 0;
@@ -193,7 +246,7 @@ private:
   uint32_t medalUntil = 0;     // celebracion de medalla en pantalla
   uint32_t milestoneUntil = 0; // celebracion de hito de racha
 
-  uint32_t today() const { return lastSeenEpoch ? lastSeenEpoch / 86400 : 0; }
+  uint32_t today() const { return dev.lastSeenEpoch ? dev.lastSeenEpoch / 86400 : 0; }
   void registerCare();   // primer cuidado del dia: racha + vinculo
   void addBond(uint8_t amt);
   void checkMedals();
@@ -203,4 +256,42 @@ private:
   void save();
   void load();
   static uint8_t clamp100(int v) { return v < 0 ? 0 : (v > 100 ? 100 : v); }
+
+  friend class Party;
+};
+
+// Partido de companeros (F34): hasta PARTY_MAX mascotas conviviendo, una
+// ACTIVA (la enfocada: se renderiza, se cuida, entrena con los pasos) y el
+// resto en reserva (envejecen lento, ver Pet::applyIdleMinutes). `pet` es el
+// companiero activo en vivo; `slots[i]` es el snapshot persistido del slot i
+// (incluido el del activo, que se sincroniza en cada guardado). Cambiar de
+// foco = exportar el activo a su slot, importar el del slot elegido.
+// Con un solo slot ocupado el bucle monomascota queda identico.
+class Party {
+public:
+  Pet pet;                     // companiero activo (estado vivo)
+  PetRecord slots[PARTY_MAX];  // snapshot persistido de cada slot
+
+  void begin();                // NVS: partido guardado, migracion de save antiguo, o primer huevo
+  void update(uint32_t nowMs); // llama a pet.update y envejece lento las reservas
+  void syncClock(uint32_t nowEpoch);  // offline: progresion completa al activo, lenta a reservas
+  void setClock(uint32_t nowEpoch);   // fija la hora sin aplicar progresion
+  void flushSave();            // vuelca el guardado periodico pendiente (activo + reservas + meta)
+
+  int filled() const;          // slots ocupados
+  bool slotUsed(int i) const { return i >= 0 && i < PARTY_MAX && slots[i].used; }
+  int activeSlot() const { return pet.slot; }
+  bool canFocus(int i) const { return slotUsed(i) && i != pet.slot; }
+  bool focus(int i);           // cambia el foco al slot i (host-testeable)
+  int firstFree() const;       // -1 si el party esta lleno
+  // una mascota llega al primer slot libre; party lleno = RECHAZO limpio
+  // (sin sobrescribir: es la regla de migracion/social de §5d)
+  bool add(const PetRecord &rec);
+  // vaciar un slot (recibir transferencias/liberar): jamas el slot activo
+  bool removeSlot(int i);
+  void saveAll();              // activo + registros de reserva + meta del party
+
+private:
+  uint32_t lastAge = 0;  // pet.ageMinutes visto: bomba de minutos para reservas
+  void syncSlotsFromPet();
 };
