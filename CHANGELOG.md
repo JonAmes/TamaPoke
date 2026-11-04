@@ -10,6 +10,18 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **Device-to-device link protocol core (F27, groundwork for trade/transfer).**
+  A pure, hardware-free P2P protocol now defines how two Tamagotchis
+  negotiate: little-endian frames `[type|len|payload|CRC16-CCITT]` capped at
+  128-byte payloads, a fixed 38-byte wire encoding of a pet record (plus a
+  16-byte device-metadata block for *transfers* — the gift keeps its
+  streak and dex history), and two state machines (trade: hello → offer →
+  prompt → commit with cross-checked record CRCs; transfer: single-sided
+  release only after the receiver's commit) with 30-second timeouts, nonces
+  and explicit reject/cancel paths. Two state machines face each other over
+  a fake transport in host tests (12 new tests). No BLE glue or UI yet —
+  that arrives when real devices are on the bench.
+
 - **Phone step link (F25/F26).** A BLE GATT service carries the step
   contract: `STEPS_DELTA` (write, int32 LE delta) feeds the same training
   path as the IMU, `STEPS_TOTAL` (read) exposes lifetime steps, and
