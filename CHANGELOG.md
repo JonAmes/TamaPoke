@@ -10,6 +10,17 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Added
 
+- **microSD over SPI on the Guition 4848S040 (`HAS_SD_SPI`).** The slot shares
+  SCLK/MOSI with the ST7701S init queue (software SPI, only runs in `setup()`)
+  with a dedicated CS (42) and MISO (41), so the hardware SPI takes the bus
+  after the panel moves to RGB-DMA refresh. Sprites, gallery thumbs, the
+  `PUT`/`LS` console protocol and the web installer's step 2 now work on that
+  board too; the card auto-formats if it can't mount. All SD access goes
+  through one `sdFS()` handle (SDMMC on the Waveshare, `SD.h` on the Guition).
+- **Web installer ships both boards.** `manifest.json` v1.20 offers a board
+  picker (Waveshare AMOLED / Guition 4848S040) and `tools/build_web.sh`
+  compiles and merges both merged `.bin` images.
+
 - **Battle & capture screen (B1).** A wild encounter now walks into a real
   battle. A deterministic pure core (`battle.h` + root `battle.cpp`, 8 new
   host tests) runs turns, damage (±10% variance), run odds scaled by speed
@@ -92,8 +103,17 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
   `-DBOARD_GUITION_4848S040`. Pins and per-board capabilities live in the new
   `board/` layer (`pin_config.h` is now a shim to it). That board has no
   PMU/battery/RTC/audio/SDMMC, so those features degrade to no-ops (clock from
-  the last save, sound off, sprites from flash only). See the README for the
-  build flag and `board/board_guition_4848s040.h` for pins.
+  the last save, sound off, sprites from flash only — since v1.20 the SD slot
+  works there too via SPI, see the `HAS_SD_SPI` entry above). See the README
+  for the build flag and `board/board_guition_4848s040.h` for pins.
+
+### Fixed
+
+- **Wild battles no longer erupt on boot.** The step→distance accumulator was
+  seeded from 0, so a board rebooting with steps already banked for the day
+  (e.g. right after reflashing) crossed the 250 m trigger instantly and
+  re-triggered after each run. The baseline is now seeded from the stored
+  count on the first pump.
 
 ## [1.18] - 2026-10-27
 

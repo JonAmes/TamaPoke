@@ -62,11 +62,20 @@
 // --- Capacidades (plan.md seccion 5) -----------------------------------------
 // El panel suelto no lleva AXP2101, PCF85063, ES8311 ni SDMMC. El SD del
 // 4848S040 es SPI (CS 42, CLK 48, MOSI 47, MISO 41, compartidos con el bus de
-// comandos de la pantalla) y queda para una tarea aparte: de momento OFF.
+// comandos del ST7701S, que solo actua en el init) y se monta via SD.h.
 #define HAS_PMU 0
 #define HAS_RTC 0
 #define HAS_AUDIO 0
 #define HAS_SD 0
+#define HAS_SD_SPI 1  // SD por SPI (ver pines abajo); la Waveshare usa SDMMC
 #define HAS_IMU 0  // el panel Guition no lleva IMU: los pasos llegan por consola/BLE
 #define HAS_BLE 1  // BLE 5 del S3: unica via de pasos reales en esta placa (F25)
 #define HAS_GPS 0  // el panel Guition no lleva GNSS: encuentros por pasos (F14)
+
+// --- microSD por SPI de hardware ---------------------------------------------
+// CS dedicado; CLK/MOSI compartidos con la cola de init SPI-bang del ST7701S
+// (solo corre en setup) y MISO solo la usa el SD. Montado por sdmon.cpp.
+#define SD_SPI_CS 42
+#define SD_SPI_SCLK 48
+#define SD_SPI_MISO 41
+#define SD_SPI_MOSI 47

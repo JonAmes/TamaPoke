@@ -36,7 +36,8 @@
 <body>
 <div class="wrap">
   <h1>🐢 TamaPoke</h1>
-  <p class="sub">A 151-Pokémon tamagotchi for the Waveshare ESP32-S3-Touch-AMOLED-1.75.
+  <p class="sub">A 151-Pokémon tamagotchi for the Waveshare ESP32-S3-Touch-AMOLED-1.75
+     and the Guition/Sunton ESP32-S3-4848S040.
      Install it from your browser — no Arduino, no drivers.</p>
 
   <p class="unsupported" id="unsupported">
@@ -45,8 +46,14 @@
 
   <h2><span class="num">1</span>Flash the firmware</h2>
   <div class="step">
-    <p>Plug the board in via USB and press install. Pick the port and wait.</p>
-    <esp-web-install-button manifest="manifest.json">
+    <p>Plug the board in via USB. Pick your <b>board</b> below, press install,
+       pick the port and wait.</p>
+    <p><label for="board" style="font-weight:600">Board:
+      <select id="board" style="font:inherit;padding:.3em .6em">
+        <option value="manifest_waveshare.json">Waveshare ESP32-S3-Touch-AMOLED-1.75</option>
+        <option value="manifest_guition.json">Guition / Sunton ESP32-S3-4848S040 (IPS)</option>
+      </select></label></p>
+    <esp-web-install-button manifest="manifest_waveshare.json">
       <button slot="activate">⚡ Install TamaPoke</button>
       <span slot="unsupported">Browser not supported (use Chrome/Edge).</span>
       <span slot="not-allowed">Needs HTTPS.</span>
@@ -102,6 +109,28 @@ const log = (m) => { const el = document.getElementById('log'); el.style.display
 const supported = 'serial' in navigator;
 if (!supported) { document.getElementById('unsupported').style.display='block';
   document.getElementById('connect').disabled = true; }
+
+// board selector: point the install button at the right single-build manifest.
+// esp-web-tools doesn't observe the manifest attribute after upgrade, so swap
+// in a fresh install-button node on change instead of just rewriting it.
+const boardSel = document.getElementById('board');
+let installBtn = document.querySelector('esp-web-install-button');
+const btnHTML = installBtn.outerHTML;
+try { const saved = localStorage.getItem('tamapoke-board');
+      if (saved) boardSel.value = saved; } catch (e) {}
+function applyBoard() {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = btnHTML;
+  const fresh = tmp.firstElementChild;
+  fresh.setAttribute('manifest', boardSel.value);
+  installBtn.replaceWith(fresh);
+  installBtn = fresh;
+}
+applyBoard();
+boardSel.addEventListener('change', () => {
+  try { localStorage.setItem('tamapoke-board', boardSel.value); } catch (e) {}
+  applyBoard();
+});
 
 let port, reader, writer, lineBuf = '';
 

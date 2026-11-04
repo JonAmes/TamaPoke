@@ -1,12 +1,20 @@
 {
   "name": "TamaPoke",
-  "version": "1.19",
+  "version": "1.20",
   "new_install_prompt_erase": true,
   "builds": [
     {
+      "name": "Waveshare AMOLED (original)",
       "chipFamily": "ESP32-S3",
       "parts": [
         { "path": "firmware/tamapoke.bin", "offset": 0 }
+      ]
+    },
+    {
+      "name": "Guition 4848S040 (IPS)",
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "firmware/tamapoke_guition.bin", "offset": 0 }
       ]
     }
   ]

@@ -2,6 +2,49 @@
 #include "pin_config.h"
 #include <FS.h>
 #include <SD_MMC.h>
+#if HAS_SD_SPI
+#include <SD.h>
+#include <SPI.h>
+// El SD del 4848S040 viaja por SPI de hardware. Comparte SCLK/MOSI (48/47) con
+// la cola de init del ST7701S, que es SPI de software (bit-bang) y solo actua
+// en setup(): tras el arranque el panel manda pixels por el bus RGB DMA y no
+// vuelve a tocar esos pins, asi que el SPI de hardware puede quedarselos. CS
+// propio (42) y MISO dedicada (41): no hay contencion en el bus.
+static SPIClass g_sdSpi(HSPI);
+#endif
+
+// Punto unico de acceso al volumen SD: SDMMC en la Waveshare, SPI en la
+// Guition. Todo el fichero habla con el juego a traves de esto.
+static fs::FS &sdFS() {
+#if HAS_SD_SPI
+  return SD;
+#else
+  return SD_MMC;
+#endif
+}
+
+// tamanos del volumen: los expone la clase concreta de cada placa, no fs::FS
+static uint64_t sdCardSize() {
+#if HAS_SD_SPI
+  return SD.cardSize();
+#else
+  return SD_MMC.cardSize();
+#endif
+}
+static uint64_t sdTotalBytes() {
+#if HAS_SD_SPI
+  return SD.totalBytes();
+#else
+  return SD_MMC.totalBytes();
+#endif
+}
+static uint64_t sdUsedBytes() {
+#if HAS_SD_SPI
+  return SD.usedBytes();
+#else
+  return SD_MMC.usedBytes();
+#endif
+}
 
 bool sdReady = false;
 bool sdDirty = false;
@@ -13,10 +56,10 @@ bool PmdMon::load(uint8_t dexNum, bool shiny) {
 
   char path[28];
   snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = sdFS().open(path, FILE_READ);
   if (!f && shiny) {  // sin shiny PMD: usa el normal
     snprintf(path, sizeof(path), "/mons/p%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = sdFS().open(path, FILE_READ);
   }
   if (!f) return false;
 
@@ -95,7 +138,7 @@ void SdThumbs::unload() {
 bool SdThumbs::load() {
   unload();  // recargar sin fugar el blob anterior
   if (!sdReady) return false;
-  File f = SD_MMC.open("/mons/thumbs.bin", FILE_READ);
+  File f = sdFS().open("/mons/thumbs.bin", FILE_READ);
   if (!f) {
     Serial.println("sin thumbs.bin (galeria sin miniaturas)");
     return false;
@@ -145,18 +188,28 @@ bool sdBegin() {
   SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);
   sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */, true /* formatea si no monta */);
   if (sdReady) {
-    Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
-    SD_MMC.mkdir("/mons");
+    Serial.printf("SD montada: %llu MB\n", sdCardSize() / (1024ULL * 1024ULL));
+    sdFS().mkdir("/mons");
   } else {
     Serial.println("SD no detectada (el juego usa los sprites de flash)");
   }
   return sdReady;
 #else
   // placa sin ranura SDMMC (Guition 4848S040): el slot es SPI (CS 42, CLK 48,
-  // MOSI 47, MISO 41, compartido con la pantalla) y se habilitara en una tarea
-  // aparte; de momento el juego va solo con los sprites de flash
-  Serial.println("SD no disponible en esta placa (el juego usa los sprites de flash)");
-  return false;
+  // MOSI 47, MISO 41). CLK/MOSI se comparten con la cola de init del ST7701S,
+  // que es SPI de software y solo corre en setup(); el panel manda despues
+  // pixels por el bus RGB DMA, asi que el SPI de hardware queda libre.
+  g_sdSpi.begin(SD_SPI_SCLK, SD_SPI_MISO, SD_SPI_MOSI, SD_SPI_CS);
+  // format_if_empty=true: formatea solo si la tarjeta viene vacia (la misma
+  // politica de la rama SDMMC), nunca toca una FAT con datos
+  sdReady = SD.begin(SD_SPI_CS, g_sdSpi, 16000000, "/sd", 5, true);
+  if (sdReady) {
+    Serial.printf("SD SPI montada: %llu MB\n", sdCardSize() / (1024ULL * 1024ULL));
+    sdFS().mkdir("/mons");
+  } else {
+    Serial.println("SD SPI no detectada (el juego usa los sprites de flash)");
+  }
+  return sdReady;
 #endif
 }
 
@@ -166,10 +219,10 @@ bool SdMon::load(uint8_t dexNum, bool shiny) {
 
   char path[24];
   snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = sdFS().open(path, FILE_READ);
   if (!f && shiny) {  // sin variante shiny: usa la normal
     snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = sdFS().open(path, FILE_READ);
   }
   if (!f) {
     Serial.printf("no existe %s\n", path);
@@ -261,8 +314,8 @@ bool sdSerialCommand(const String &line) {
     // que quedo a medias lo alargaba en vez de reemplazarlo: quedaba un sprite
     // corrupto y mas grande que el original. Importa mas desde que el instalador
     // reanuda transferencias cortadas, porque reintenta justo los que fallaron.
-    if (SD_MMC.exists(path)) SD_MMC.remove(path);
-    File f = SD_MMC.open(path, FILE_WRITE);
+    if (sdFS().exists(path)) sdFS().remove(path);
+    File f = sdFS().open(path, FILE_WRITE);
     if (!f) {
       Serial.println("ERR");
       return true;
@@ -288,11 +341,11 @@ bool sdSerialCommand(const String &line) {
     Serial.println(remaining == 0 ? "DONE" : "ERR");
     return true;
   } else if (line == "SDINFO") {  // diagnostico remoto de "no me reconoce la SD"
-    Serial.printf("total=%llu used=%llu\n", SD_MMC.totalBytes(), SD_MMC.usedBytes());
+    Serial.printf("total=%llu used=%llu\n", sdTotalBytes(), sdUsedBytes());
     Serial.println("DONE");
     return true;
   } else if (line == "LS") {
-    File dir = SD_MMC.open("/mons");
+    File dir = sdFS().open("/mons");
     if (dir) {
       File e;
       while ((e = dir.openNextFile())) {

@@ -18,3 +18,8 @@
 #else
 #include "board_waveshare_amoled.h"
 #endif
+
+// capacidad de SD por SPI: solo la define la placa Guition; el resto, OFF
+#ifndef HAS_SD_SPI
+#define HAS_SD_SPI 0
+#endif

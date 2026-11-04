@@ -44,7 +44,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "1.18"
+#define FW_VERSION "1.20"
 
 #if defined(BOARD_GUITION_4848S040)
 // ST7701S: la secuencia de init viaja por SPI de 3 hilos y los pixels por el
@@ -932,7 +932,14 @@ void battlePump(uint32_t now) {
   if (galleryOpen || gameOpen || sackOpen || kbOpen || clockOpen || cardOpen) return;
   if (choiceKind || confirmUntil || feedMenuUntil) return;
   static uint32_t lastSteps = 0;
+  static bool seeded = false;
   uint32_t st = pet.stepsDayCount();
+  if (!seeded) {  // primer barrido: los pasos ya guardados del dia NO cuentan
+                   // como distancia (si no, al flashear el firmware el pichon
+                   // entraba en combate nada mas arrancar)
+    seeded = true;
+    lastSteps = st;
+  }
   if (st < lastSteps) lastSteps = st;  // cambio de dia: la cuenta diario se resetea
   encWalkM += (float)(st - lastSteps) * 0.75f;
   lastSteps = st;
