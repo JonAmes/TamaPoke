@@ -8,6 +8,18 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Guition 4848S040: consola y retroiluminación.** The S3's native USB
+  (GPIO19/20 = D-/D+) is spoken for by that board's touch SDA (19) and RGB
+  G1 (20), and its USB-C is a CH340/CH550 bridge wired to UART0 (43/44).
+  The Guition build now ships **with USB CDC off**, so `Serial` (boot log,
+  boot-stage markers `SETUP-gfx/touch/sd`, `INFO`/`PUT` console, sprite
+  transfer) runs on UART0 — the port you actually plug into. Also: the
+  backlight now attaches LEDC once, starts **off** during panel init and
+  ramps to 180 (`displayRampOn`) to dodge the ST7701S-charge-pumps +
+  RGB-DMA + full-bl inrush that can brown-out a tired USB supply.
+
 ### Added
 
 - **microSD over SPI on the Guition 4848S040 (`HAS_SD_SPI`).** The slot shares

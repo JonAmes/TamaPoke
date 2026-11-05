@@ -36,10 +36,14 @@ jobs:
       # Guition/Sunton 4848S040 (ST7701S RGB 480x480 + GT911): mismo codigo,
       # la capa board/ elige placa con un flag de compilacion. Se compila aqui
       # para que la compatibilidad no se oxide.
+      # OJO: sin CDCOnBoot en la Guition. GPIO19/20 = USB nativo del S3, pero
+      # la placa los usa como IIC_SDA/RGB_G1; con CDC la consola muere al
+      # inicializar tactil/panel. Sin CDC, Serial = UART0 (43/44) = el puente
+      # USB-UART de la placa.
       - name: Compile (Guition 4848S040)
         run: >
           arduino-cli compile --warnings=all
-          --fqbn "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
+          --fqbn "esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
           --build-property "compiler.cpp.extra_flags=-DBOARD_GUITION_4848S040"
           .
 

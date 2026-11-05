@@ -44,7 +44,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "1.20"
+#define FW_VERSION "1.21"
 
 #if defined(BOARD_GUITION_4848S040)
 // ST7701S: la secuencia de init viaja por SPI de 3 hilos y los pixels por el
@@ -76,12 +76,26 @@ void displaySetBrightness(uint8_t v) {
   }
   ledcWrite(LCD_BL, v);
 }
+// Encendido suave: en estos modulos el ST7701S (bombas de carga internas) +
+// DMA RGB + backlight a tope en el mismo instante piden un pico de corriente
+// que, con USB justo, hunde el rail de 3.3V -> brownout -> rst:0x1 POWERON en
+// bucle sin una sola linea de log. Arrancar el panel con BL a 0 y subir el
+// brillo en rampa evita el pico.
+void displayRampOn(uint8_t target) {
+  displaySetBrightness(0);
+  for (uint16_t v = 16; v < target; v += 16) {
+    displaySetBrightness((uint8_t)v);
+    delay(30);
+  }
+  displaySetBrightness(target);
+}
 #else
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
 Arduino_CO5300 *panel = new Arduino_CO5300(
   bus, LCD_RESET, 0 /*rotation*/, LCD_WIDTH, LCD_HEIGHT, 6, 0, 0, 0);
 void displaySetBrightness(uint8_t v) { panel->setBrightness(v); }
+void displayRampOn(uint8_t v) { displaySetBrightness(v); }
 #endif
 // Framebuffer completo en PSRAM: dibujamos todo y hacemos flush() (sin parpadeo)
 Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
@@ -266,8 +280,12 @@ void setup() {
   Serial.begin(115200);
   // CRITICO: sin esto, Serial.print BLOQUEA el juego cuando no hay un
   // monitor serie abierto en el host (el bufer TX del USB CDC se llena
-  // y nadie lo vacia) -> con timeout 0 los mensajes se descartan
+  // y nadie lo vacia) -> con timeout 0 los mensajes se descartan.
+  // Solo existe en el CDC: en la Guition (sin CDCOnBoot) Serial es UART0,
+  // que nunca bloquea sin oyente.
+#if ARDUINO_USB_CDC_ON_BOOT
   Serial.setTxTimeoutMs(0);
+#endif
   Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
   loadLang();  // idioma guardado (ES por defecto)
   Wire.begin(IIC_SDA, IIC_SCL);
@@ -287,8 +305,16 @@ void setup() {
   // QSPI a 80MHz en la Waveshare (por defecto 40): el flush del framebuffer es
   // el cuello de botella del fps (~56ms a 40MHz). El panel RGB usa el
   // prefer_speed del rgbpanel (RGB_PCLK_HZ). Si mostrara basura, bajarlo.
+  // En la Guition (IPS RGB) el panel arranca con la retroillumacion a 0: ver
+  // displayRampOn (arranque suave, evita el pico de corriente que re-inicia la
+  // placa por brownout). Marcadores SETUP-* en serial para acotar un bucle de
+  // arranque: el ultimo marcador impreso marca donde murio el arranque.
+#if defined(BOARD_GUITION_4848S040)
+  displaySetBrightness(0);
+#endif
+  Serial.println("SETUP-gfx");
   if (!gfx->begin(DISPLAY_BEGIN_HZ)) Serial.println("gfx->begin() fallo");
-  displaySetBrightness(180);
+  displayRampOn(180);
   applyLangFont();  // fuente del idioma guardado (clasica salvo CJK)
 
 #if TOUCH_POLLING
@@ -321,6 +347,7 @@ void setup() {
   pinMode(TP_INT, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TP_INT), touchIsr, FALLING);
 #endif
+  Serial.println("SETUP-touch");
 
   party.begin();
 
@@ -359,6 +386,7 @@ void setup() {
   gpsStart();
   g_enc.setSeed(millis() ^ micros());
 
+  Serial.println("SETUP-sd");
   sdBegin();
   thumbs.load();
 

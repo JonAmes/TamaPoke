@@ -166,7 +166,13 @@ the pin/capability layer in `board/` swaps the QSPI/CO5300 display and the
 CST9217 for the RGB panel and the GT911:
 
 ```bash
-arduino-cli compile --fqbn "$FQBN" \
+# OJO: sin USB CDC en esta placa. GPIO19/20 son el USB nativo del S3, pero el
+# 4848S040 los usa como IIC_SDA(19) y RGB_G1(20), y su USB-C es un puente
+# CH340/CH550 -> UART0 (GPIO43/44). Con "USB CDC On Boot: Enabled" la consola
+# muere al inicializar tactil/panel (cero logs, PUT inoperativo). Deshabilita
+# el CDC en el IDE y usa esta FQBN: Serial = UART0 = el conector USB-C.
+FQBN_GUITION="esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
+arduino-cli compile --fqbn "$FQBN_GUITION" \
   --build-property "compiler.cpp.extra_flags=-DBOARD_GUITION_4848S040" .
 ```
 

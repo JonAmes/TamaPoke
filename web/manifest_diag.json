@@ -1,0 +1,14 @@
+{
+  "name": "DIAG Guition smoke test (temp)",
+  "version": "0.9-diag",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "name": "DIAG Guition 4848S040",
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "firmware/tamapoke_diag.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
