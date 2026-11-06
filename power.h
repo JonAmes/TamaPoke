@@ -45,7 +45,13 @@ inline bool batteryCritical(const PowerCtx &c) { return c.batPct >= 0 && c.batPc
 inline uint8_t brightnessFor(const PowerCtx &c) {
   if (c.screenOff) return 0;
   uint8_t stage = dimStageFor(c.idleMs);
+#if defined(BOARD_GUITION_4848S040)
+  // Guition (IPS LED BL): en placa se demostro BL=255 estable con el bounce
+  // buffer del panel; tope de 180 con bateria para no fundir autonomia.
+  uint8_t t = c.sleeping ? 25 : (c.usb ? 255 : 180);
+#else
   uint8_t t = c.sleeping ? 25 : (c.usb ? 180 : 145);
+#endif
   if (stage == DIM_LOW) t = c.sleeping ? 10 : 60;
   else if (stage == DIM_OFF) t = 8;
   if (batteryCritical(c) && t > 60) t = 60;

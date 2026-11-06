@@ -44,7 +44,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "1.21"
+#define FW_VERSION "1.22"
 
 #if defined(BOARD_GUITION_4848S040)
 // ST7701S: la secuencia de init viaja por SPI de 3 hilos y los pixels por el
@@ -61,7 +61,14 @@ Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     RGB_B0, RGB_B1, RGB_B2, RGB_B3, RGB_B4,
     1 /*hsync pol*/, 10 /*front*/, 8 /*pulso*/, 50 /*back*/,
     1 /*vsync pol*/, 10 /*front*/, 8 /*pulso*/, 20 /*back*/,
-    0 /*pclk activo flanco pos*/, RGB_PCLK_HZ /*prefer_speed*/, false /*big endian*/);
+    0 /*pclk activo flanco pos*/, RGB_PCLK_HZ /*prefer_speed*/, false /*big endian*/,
+    0 /*de_idle_high*/, 0 /*pclk_idle_high*/,
+    // bounce buffer: el DMA de scanout se rellena desde una SRAM interna DMA
+    // (60 lineas = 57.6 KB) en vez de leer PSRAM a cada pixel-clock. Sin esto,
+    // el blit del lienzo (460 KB por frame) y el scanout pelean por el bus
+    // OPI de la PSRAM -> el DMA se queda a dieta y la imagen parpadea/babea.
+    480 * 60 /*bounce_buffer_size_px: 60 lineas = 57.6 KB; debe dividir
+                exacto el fb (480x480 / 480x60 = 8 buffers)*/);
 // rotation 0 = orientacion nativa del modulo (cuadrada, tactil alineado); si
 // el montaje fisico gira la pantalla, ajustar aqui y el swapXY del GT911
 Arduino_RGB_Display *panel = new Arduino_RGB_Display(
@@ -314,7 +321,11 @@ void setup() {
 #endif
   Serial.println("SETUP-gfx");
   if (!gfx->begin(DISPLAY_BEGIN_HZ)) Serial.println("gfx->begin() fallo");
-  displayRampOn(180);
+  // objetivo 255: el barrido DIAG en placa demostro BL=255 estable y arranque
+  // sin brownout; la rampa (0->255 en ~500 ms) sigue protegiendo el pico de
+  // corriente del encendido. 180 fue un parche de v1.21 para un brownout que
+  // ya no existe.
+  displayRampOn(255);
   applyLangFont();  // fuente del idioma guardado (clasica salvo CJK)
 
 #if TOUCH_POLLING

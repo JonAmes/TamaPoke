@@ -10,6 +10,24 @@ Updating from the [web installer](https://socquique.github.io/TamaPoke/web/)
 
 ### Fixed
 
+- **Guition 4848S040: panel shimmer/tearing (root cause: PSRAM DMA
+  starvation).** The RGB-DMA scanout read the framebuffer straight from
+  OPI-PSRAM; every canvas flush (460 KB/frame) competed with it for the
+  PSRAM bus, starving the scanout and making the image shimmer/tear even
+  on still screens. The panel now uses an **ESP-IDF bounce buffer**
+  (`bounce_buffer_size_px = 480*60`, ~57.6 KB internal DMA SRAM — must
+  divide the 480×480 framebuffer exactly). Verified on-device: solid-fill
+  DIAG at max backlight is rock-stable, and gameplay is stable at full
+  brightness. The `tools/diag_guition` smoke test gained a pinned-bl
+  endless R/G/B/black fill cycle for exactly this kind of A/B.
+- **Guition 4848S040: screen too dim.** The dimness was not the startup
+  ramp — `brightnessFor()` (power.h) re-asserts a ceiling every loop
+  (was 145 battery / 180 USB). On-device testing showed no brownout at
+  BL=255, so the Guition ceiling is now **255 on USB / 180 on battery**;
+  the Waveshare AMOLED curve is unchanged (`#if`-gated per board). The
+  startup ramp target went 180 → 255 accordingly. Idle dim after 90 s
+  (60) and 5 min (8) still apply on both boards.
+
 - **Guition 4848S040: consola y retroiluminación.** The S3's native USB
   (GPIO19/20 = D-/D+) is spoken for by that board's touch SDA (19) and RGB
   G1 (20), and its USB-C is a CH340/CH550 bridge wired to UART0 (43/44).

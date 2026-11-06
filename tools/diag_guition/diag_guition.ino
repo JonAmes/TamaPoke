@@ -33,6 +33,8 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
     sizeof(st7701_type9_init_operations));
 
 int stage = 0;
+uint32_t blT2 = 0;
+int fillN = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -51,8 +53,10 @@ void loop() {
   static int duty = 255;
   uint32_t now = millis();
 
-  // barrido de retroiluminacion: si el pin PWM manda, el brillo palpita solo
-  if (now - blT > 1500) {
+  // barrido de retroiluminacion: si el pin PWM manda, el brillo palpita solo.
+  // se PAUSA en cuanto el panel esta vivo (stage>=2) para poder mirar los
+  // rellenos de color con BL fijo al maximo.
+  if (stage < 2 && now - blT > 1500) {
     blT = now;
     duty -= 64;
     if (duty <= 0) duty = 255;
@@ -71,11 +75,18 @@ void loop() {
 
   if (stage == 2) {
     stage = 3;
-    Serial.println("ETAPA 2: rellenos RGB");
-    gfx->fillScreen(0xF800); delay(800);
-    gfx->fillScreen(0x07E0); delay(800);
-    gfx->fillScreen(0x001F); delay(800);
-    Serial.println("ETAPA 2: done");
+    Serial.println("ETAPA 2: rellenos RGB (BL fijado a 180 = juego real, ciclo eterno)");
+    ledcWrite(LCD_BL, 180);
+  }
+
+  // ciclo de rellenos en bucle: rojo, verde, azul, negro — 700ms cada uno,
+  // para poder observar cada color con calma y detectar shimmer/tearing
+  if (stage == 3 && now - blT2 > 700) {
+    blT2 = now;
+    fillN = (fillN + 1) & 3;
+    static const uint16_t cols[4] = {0xF800, 0x07E0, 0x001F, 0x0000};
+    gfx->fillScreen(cols[fillN]);
+    Serial.printf("FILL=%d BL=255\n", fillN);
   }
 
   if (now - lastBeat > 400) {
